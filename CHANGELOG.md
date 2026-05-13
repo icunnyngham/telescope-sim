@@ -6,6 +6,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a2] - 2026-05-13
+
+### Changed
+- Repository URLs in `pyproject.toml`, `README.md`, and `CHANGELOG.md`
+  point at `github.com/icunnyngham/telescope-sim`.
+
+### Fixed
+- CI lint workflow: 24 ruff auto-fixes, 20 file reformats, per-file
+  PLC0415 ignore for `tests/` and `fixtures/runner/` (intentional lazy
+  / sys.path-manipulating imports), and `noqa` on three legitimate
+  deferred-import sites in `src/` (pipeline ↔ loader cycle breaks).
+- CI docs workflow: install `pandoc` (nbsphinx needs it).
+- Ruff isort config: explicit `src = ["src"]` plus
+  `known-first-party`/`known-third-party` lists so the classification
+  matches across local-dev (where a gitignored `hcipy/` clone shadows
+  site-packages) and CI environments.
+
+### Added
+- Read the Docs configuration (`.readthedocs.yaml`): Ubuntu 24.04 +
+  Python 3.12 + pandoc apt package + pip install of `.[doc]`.
+
 ## [2.0.0a1] - 2026-05-13
 
 ### Added
@@ -62,5 +83,6 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a1...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a2...HEAD
+[2.0.0a2]: https://github.com/icunnyngham/telescope-sim/releases/tag/v2.0.0a2
 [2.0.0a1]: https://github.com/icunnyngham/telescope-sim/releases/tag/v2.0.0a1

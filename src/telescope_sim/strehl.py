@@ -45,7 +45,7 @@ def core_integral_strehl(
     y = np.asarray(focal_grid.y)
     x0, y0 = float(x[peak_idx]), float(y[peak_idx])
     r2 = (x - x0) ** 2 + (y - y0) ** 2
-    mask = r2 <= core_radius_rad ** 2
+    mask = r2 <= core_radius_rad**2
     ref_int = float(ref.ravel()[mask].sum())
     if ref_int <= 0:
         return 0.0

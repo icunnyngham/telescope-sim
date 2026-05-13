@@ -105,6 +105,13 @@ target-version = "py310"
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "PL"]
 ignore = ["PLR0913", "PLR2004"]
 
+[tool.ruff.lint.per-file-ignores]
+# Tests intentionally import locally inside test functions for lazy loading
+# and to interleave with warnings.catch_warnings(); fixture configs and
+# digest_lib live outside src/ and need sys.path manipulation.
+"tests/**/*.py" = ["PLC0415"]
+"fixtures/runner/*.py" = ["PLC0415"]
+
 [tool.mypy]
 python_version = "3.10"
 strict = false

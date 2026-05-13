@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import hcipy
 import numpy as np
 from numpy.typing import NDArray
 
+import hcipy
 from telescope_sim.abc import Aperture, ApertureResult
 from telescope_sim.registry import register
 
@@ -85,9 +85,7 @@ class SegmentedCircularAperture(Aperture):
         )
 
         aper_field = hcipy.evaluate_supersampled(aper_callable, pupil_grid, self.supersample)
-        segments = hcipy.evaluate_supersampled(
-            segments_callables, pupil_grid, self.supersample
-        )
+        segments = hcipy.evaluate_supersampled(segments_callables, pupil_grid, self.supersample)
 
         # Optional spider — multiply into the aperture mask (does NOT affect
         # segment masks, which the canonical implementations also leave alone).
@@ -98,9 +96,7 @@ class SegmentedCircularAperture(Aperture):
             # Use the pupil grid's extent as the spider half-length
             x_arr = np.asarray(pupil_grid.x)
             y_arr = np.asarray(pupil_grid.y)
-            p_ext = float(
-                max(x_arr.max() - x_arr.min(), y_arr.max() - y_arr.min())
-            )
+            p_ext = float(max(x_arr.max() - x_arr.min(), y_arr.max() - y_arr.min()))
             s1_start = (p_ext * np.cos(angle), p_ext * np.sin(angle))
             s1_end = (p_ext * np.cos(angle + np.pi), p_ext * np.sin(angle + np.pi))
             s2_start = (

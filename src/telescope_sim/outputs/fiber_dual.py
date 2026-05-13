@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import hcipy
 import numpy as np
 from numpy.typing import NDArray
 
+import hcipy
 from telescope_sim.abc import OutputTap
 from telescope_sim.registry import register
 
@@ -70,8 +70,7 @@ class FiberDualOutputTap(OutputTap):
             )
         if self.focal_plane_name not in fp_results:
             raise KeyError(
-                f"focal plane {self.focal_plane_name!r} not in available outputs "
-                f"{list(fp_results)}"
+                f"focal plane {self.focal_plane_name!r} not in available outputs {list(fp_results)}"
             )
         result = fp_results[self.focal_plane_name]
         focal_total = np.asarray(result.intensity, dtype=np.float64)

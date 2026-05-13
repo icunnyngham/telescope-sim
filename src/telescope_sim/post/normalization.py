@@ -33,9 +33,7 @@ class MaxIntensityNorm(PostProcessor):
         peaks = np.asarray(peaks, dtype=np.float64)
         # image is (H, W, C); peaks is (C,)
         if image.shape[-1] != peaks.shape[0]:
-            raise ValueError(
-                f"channel count {image.shape[-1]} != n_peaks {peaks.shape[0]}"
-            )
+            raise ValueError(f"channel count {image.shape[-1]} != n_peaks {peaks.shape[0]}")
         return image / peaks[None, None, :]
 
 

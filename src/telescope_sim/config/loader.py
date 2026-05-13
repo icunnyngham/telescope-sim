@@ -13,8 +13,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import hcipy
 import yaml
+
+import hcipy
 
 # Side-effect imports: populate the registry with all stock implementations
 import telescope_sim.apertures.external_pupil  # noqa: F401
@@ -49,10 +50,7 @@ def _instantiate(kind: str, cfg: StageConfig | dict | str, **extras: Any) -> Any
     if isinstance(cfg, str):
         cls = lookup(kind, cfg)
         return cls(**extras)
-    if isinstance(cfg, StageConfig):
-        payload = cfg.model_dump()
-    else:
-        payload = dict(cfg)
+    payload = cfg.model_dump() if isinstance(cfg, StageConfig) else dict(cfg)
     type_name = payload.pop("type")
     cls = lookup(kind, type_name)
     return cls(**payload, **extras)
@@ -68,9 +66,7 @@ def load_yaml(path: str | Path) -> SimConfig:
 def build(config: SimConfig) -> TelescopeSim:
     """Instantiate a TelescopeSim from a validated config."""
     # 1) Pupil grid
-    pupil_grid = hcipy.make_pupil_grid(
-        config.pupil.resolution, config.pupil.extent
-    )
+    pupil_grid = hcipy.make_pupil_grid(config.pupil.resolution, config.pupil.extent)
 
     # 2) Aperture
     aperture_impl: Aperture = _instantiate("aperture", config.aperture)
@@ -171,9 +167,7 @@ def build(config: SimConfig) -> TelescopeSim:
             or ([tap.source] if isinstance(tap.source, str) else [])
         )
         outputs.append(
-            _OutputSpec(
-                name=out_name, tap=tap, post_processors=pps, focal_plane_names=fp_names
-            )
+            _OutputSpec(name=out_name, tap=tap, post_processors=pps, focal_plane_names=fp_names)
         )
 
     components = _PipelineComponents(
@@ -200,9 +194,7 @@ def build_from_preset(name: str) -> TelescopeSim:
         # List available presets for the error message
         presets_dir = preset_path.parent
         available = sorted(p.stem for p in presets_dir.glob("*.yaml"))
-        raise ValueError(
-            f"unknown preset {name!r}; available: {available or '(none)'}"
-        )
+        raise ValueError(f"unknown preset {name!r}; available: {available or '(none)'}")
     return build_from_yaml(preset_path)
 
 

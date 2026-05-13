@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import hcipy
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+import hcipy
 from telescope_sim.abc import Corrector
 from telescope_sim.abc.corrector import TargetStrategy, WavefrontRole
 from telescope_sim.registry import register
@@ -164,8 +164,8 @@ class SegmentedPTTCorrector(Corrector):
             # mask is non-zero AND inside the (spider-cropped) aperture.
             seg_mask = (np.asarray(self._sm.segments[i]) != 0) & (aper_arr != 0)
             inds = np.where(seg_mask)[0]
-            xs = (x_coords[inds] - cx)
-            ys = (y_coords[inds] - cy)
+            xs = x_coords[inds] - cx
+            ys = y_coords[inds] - cy
             off = np.ones_like(xs)
             data.append({"inds": inds, "off": off, "xs": xs, "ys": ys})
         self._segment_pixel_data = data

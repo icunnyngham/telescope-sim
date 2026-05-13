@@ -26,8 +26,6 @@ from pathlib import Path
 from typing import Any
 
 import hcipy
-import numpy as np
-
 from telescope_sim.abc import Aperture, ApertureResult
 from telescope_sim.registry import register
 
@@ -48,9 +46,7 @@ def _load_callable(module: str, function: str) -> Any:
     try:
         return getattr(mod, function)
     except AttributeError as e:
-        raise AttributeError(
-            f"module {module!r} has no attribute {function!r}"
-        ) from e
+        raise AttributeError(f"module {module!r} has no attribute {function!r}") from e
 
 
 @register("aperture", "external_pupil")
@@ -94,9 +90,7 @@ class ExternalPupilAperture(Aperture):
             aper_field = fn(pupil_grid=pupil_grid, **self.kwargs)
         else:
             aper_callable = fn(**self.kwargs)
-            aper_field = hcipy.evaluate_supersampled(
-                aper_callable, pupil_grid, self.supersample
-            )
+            aper_field = hcipy.evaluate_supersampled(aper_callable, pupil_grid, self.supersample)
         return ApertureResult(
             field=aper_field,
             area=float(self.area),

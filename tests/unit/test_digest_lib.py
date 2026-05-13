@@ -111,9 +111,7 @@ def test_write_read_roundtrip(tmp_path: Path):
 def test_all_committed_digests_are_well_formed():
     """Every committed digest should be a v1.0 record with at least one output
     and a non-empty fixture id matching the directory name."""
-    digests_root = (
-        Path(__file__).resolve().parents[2] / "fixtures/runner/digests"
-    )
+    digests_root = Path(__file__).resolve().parents[2] / "fixtures/runner/digests"
     digest_files = sorted(digests_root.glob("*/expected.json"))
     if not digest_files:
         pytest.skip("no fixture digests captured in this checkout")
@@ -133,8 +131,7 @@ def test_all_committed_digests_are_well_formed():
 def test_committed_fiber_digest_specifics():
     """Targeted sanity check for the fiber digest's known shape."""
     digest_path = (
-        Path(__file__).resolve().parents[2]
-        / "fixtures/runner/digests/15_fiber_mmf/expected.json"
+        Path(__file__).resolve().parents[2] / "fixtures/runner/digests/15_fiber_mmf/expected.json"
     )
     if not digest_path.exists():
         pytest.skip("fiber digest not captured in this checkout")

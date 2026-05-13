@@ -13,8 +13,6 @@ from __future__ import annotations
 from typing import Any
 
 import hcipy
-import numpy as np
-
 from telescope_sim.abc import Aperture, Coronagraph
 from telescope_sim.registry import lookup, register
 
@@ -65,9 +63,7 @@ class VortexCoronagraphImpl(Coronagraph):
 
     def _bind_pupil_grid(self, pupil_grid: Any) -> None:
         lyot_field = _resolve_lyot_field(self._lyot_cfg, pupil_grid)
-        self._coro = hcipy.VortexCoronagraph(
-            pupil_grid, charge=self.charge, lyot_stop=lyot_field
-        )
+        self._coro = hcipy.VortexCoronagraph(pupil_grid, charge=self.charge, lyot_stop=lyot_field)
 
     def apply(self, wf: Any) -> Any:
         if self._coro is None:
@@ -89,9 +85,7 @@ class VectorVortexCoronagraphImpl(Coronagraph):
     def _bind_pupil_grid(self, pupil_grid: Any) -> None:
         lyot_field = _resolve_lyot_field(self._lyot_cfg, pupil_grid)
         # VectorVortexCoronagraph in HCIPy takes lyot_stop as a positional/kwarg
-        self._coro = hcipy.VectorVortexCoronagraph(
-            charge=self.charge, lyot_stop=lyot_field
-        )
+        self._coro = hcipy.VectorVortexCoronagraph(charge=self.charge, lyot_stop=lyot_field)
 
     def apply(self, wf: Any) -> Any:
         if self._coro is None:

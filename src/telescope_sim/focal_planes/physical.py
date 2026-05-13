@@ -13,13 +13,13 @@ field rather than just summed intensity.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-import hcipy
 import numpy as np
 from numpy.typing import NDArray
 
+import hcipy
 from telescope_sim.abc import FocalPlane
 from telescope_sim.registry import register
 
@@ -44,8 +44,8 @@ class _PhysicalLamSetup:
 class FocalPlaneResult:
     """Per-sample focal-plane output retained for downstream taps."""
 
-    intensity: NDArray[np.floating]            # summed intensity across wavelengths
-    wavefronts: list[Any]                       # per-wavelength focal Wavefronts
+    intensity: NDArray[np.floating]  # summed intensity across wavelengths
+    wavefronts: list[Any]  # per-wavelength focal Wavefronts
 
 
 @register("focal_plane", "physical")
@@ -95,15 +95,11 @@ class PhysicalFocalPlane(FocalPlane):
         # (which gives us a uniform metric grid; the legacy fiber variant
         # uses this exact construction).
         focal_grid = hcipy.make_pupil_grid(self.focal_res, self.focal_extent)
-        prop = hcipy.FraunhoferPropagator(
-            pupil_grid, focal_grid, focal_length=self.focal_length
-        )
+        prop = hcipy.FraunhoferPropagator(pupil_grid, focal_grid, focal_length=self.focal_length)
 
         if self.num_samples > 1:
             half = self.fractional_bandwidth / 2.0
-            filter_lams = self.central_lam * np.linspace(
-                1.0 - half, 1.0 + half, self.num_samples
-            )
+            filter_lams = self.central_lam * np.linspace(1.0 - half, 1.0 + half, self.num_samples)
         else:
             filter_lams = np.array([self.central_lam])
 
@@ -142,9 +138,7 @@ class PhysicalFocalPlane(FocalPlane):
     ) -> FocalPlaneResult:
         assert self._lam_setup is not None
         focal_wavefronts: list[Any] = []
-        total = np.zeros(
-            (self.focal_res, self.focal_res), dtype=np.float64
-        )
+        total = np.zeros((self.focal_res, self.focal_res), dtype=np.float64)
         for wf in self._lam_setup.wavefronts:
             wf_out = wf
             for c in corrector_chain:

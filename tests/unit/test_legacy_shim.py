@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import warnings
 
-import numpy as np
 import pytest
 
 
@@ -82,7 +81,7 @@ def test_shim_rejects_unsupported_kwarg():
                 mirror_layout="elf",
                 telescope_radius=1.25,
                 sub_aperture_count=15,
-                dm_actuator_num=11,    # not supported by shim
+                dm_actuator_num=11,  # not supported by shim
             )
 
 

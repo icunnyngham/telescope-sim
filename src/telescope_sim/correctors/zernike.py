@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from typing import Any
 
-import hcipy
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+import hcipy
 from telescope_sim.abc import Corrector
 from telescope_sim.abc.corrector import TargetStrategy, WavefrontRole
 from telescope_sim.registry import register

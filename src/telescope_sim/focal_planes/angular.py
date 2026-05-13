@@ -13,13 +13,13 @@ fixtures #01/#02/#10/#11 don't use detectors.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
-import hcipy
 import numpy as np
 from numpy.typing import NDArray
 
+import hcipy
 from telescope_sim.abc import FocalPlane
 from telescope_sim.focal_planes.physical import FocalPlaneResult
 from telescope_sim.registry import register
@@ -99,9 +99,7 @@ class AngularFocalPlane(FocalPlane):
 
         if self.num_samples > 1:
             half = self.fractional_bandwidth / 2.0
-            filter_lams = self.central_lam * np.linspace(
-                1.0 - half, 1.0 + half, self.num_samples
-            )
+            filter_lams = self.central_lam * np.linspace(1.0 - half, 1.0 + half, self.num_samples)
         else:
             filter_lams = np.array([self.central_lam])
 
@@ -147,9 +145,7 @@ class AngularFocalPlane(FocalPlane):
         """
         assert self._lam_setup is not None
         focal_wavefronts: list[Any] = []
-        total = np.zeros(
-            (self.focal_res, self.focal_res), dtype=np.float64
-        )
+        total = np.zeros((self.focal_res, self.focal_res), dtype=np.float64)
         for wf in self._lam_setup.wavefronts:
             wf_out = wf
             for c in corrector_chain:

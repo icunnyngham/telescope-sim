@@ -49,6 +49,7 @@ def test_register_duplicate_raises() -> None:
             return None
 
     with pytest.raises(ValueError, match="already registered"):
+
         @register("aperture", "_test_dupe")
         class _B(Aperture):  # noqa: F811
             def build(self, pupil_grid):  # noqa: ANN001

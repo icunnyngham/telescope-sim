@@ -35,7 +35,6 @@ from typing import Any
 
 import numpy as np
 
-
 # Defaults pulled from the v1 argparser, kept here to avoid pulling
 # argparse and joblib into v2. Add fields as you discover the shim is
 # missing them in real-world calls.
@@ -43,9 +42,9 @@ _V1_DEFAULTS: dict[str, Any] = {
     "mirror_layout": "elf",
     "telescope_radius": 1.25,
     "sub_aperture_count": 15,
-    "sub_aperture_radius": None,         # auto from chord
+    "sub_aperture_radius": None,  # auto from chord
     "pupil_res": 256,
-    "pupil_extent": None,                # auto
+    "pupil_extent": None,  # auto
     "piston_scale": 1e-6,
     "tip_tilt_scale": 1e-6,
     "spider_width": None,
@@ -111,8 +110,8 @@ class SimulateMultiApertureTelescope:
 
         # Defer the TelescopeSim import so importing this shim doesn't
         # drag in HCIPy unless the user actually uses it.
-        from telescope_sim.config.loader import build
-        from telescope_sim.config.schema import SimConfig
+        from telescope_sim.config.loader import build  # noqa: PLC0415
+        from telescope_sim.config.schema import SimConfig  # noqa: PLC0415
 
         self._sim = build(SimConfig.model_validate(v2_config))
 
@@ -142,8 +141,7 @@ def _build_v2_config(cfg: dict[str, Any]) -> dict[str, Any]:
     layout = cfg["mirror_layout"]
     if layout not in ("elf", "monolithic"):
         raise NotImplementedError(
-            f"mirror_layout={layout!r} is not yet supported by the shim. "
-            "Migrate to a YAML config."
+            f"mirror_layout={layout!r} is not yet supported by the shim. Migrate to a YAML config."
         )
 
     n_seg = int(cfg["sub_aperture_count"])

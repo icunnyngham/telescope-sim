@@ -16,7 +16,6 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from telescope_sim.abc import (
-    Aperture,
     ApertureResult,
     Coronagraph,
     Corrector,
@@ -77,14 +76,16 @@ class TelescopeSim:
     @classmethod
     def from_yaml(cls, path: str | Path) -> TelescopeSim:
         """Load a configuration YAML and build the pipeline."""
-        from telescope_sim.config.loader import build_from_yaml
+        # Deferred to avoid the loader → pipeline import cycle.
+        from telescope_sim.config.loader import build_from_yaml  # noqa: PLC0415
 
         return build_from_yaml(path)
 
     @classmethod
     def from_preset(cls, name: str) -> TelescopeSim:
         """Load a packaged preset by name."""
-        from telescope_sim.config.loader import build_from_preset
+        # Deferred to avoid the loader → pipeline import cycle.
+        from telescope_sim.config.loader import build_from_preset  # noqa: PLC0415
 
         return build_from_preset(name)
 
@@ -104,7 +105,7 @@ class TelescopeSim:
 
     # --- Main entry point --------------------------------------------------
 
-    def sample(
+    def sample(  # noqa: PLR0912  (orchestration: the branching reflects the chain stages)
         self,
         actuations: Mapping[str, ArrayLike] | None = None,
         *,
@@ -131,15 +132,9 @@ class TelescopeSim:
         """
         actuations = dict(actuations or {})
 
-        # 1) Apply actuator state to "actuate" correctors.
+        # 1) Apply actuator state to "actuate" and "impose" correctors.
         for c in self._c.correctors:
-            if c.wavefront_role == "actuate":
-                values = actuations.get(c.name)
-                if values is None:
-                    c.flatten()
-                else:
-                    c.set_actuators(values)
-            elif c.wavefront_role == "impose":
+            if c.wavefront_role in {"actuate", "impose"}:
                 values = actuations.get(c.name)
                 if values is None:
                     c.flatten()
@@ -174,12 +169,10 @@ class TelescopeSim:
 
             # Build context for post-processors
             ref_peaks = [
-                self._c.focal_planes[n].reference_peak_intensity
-                for n in out_spec.focal_plane_names
+                self._c.focal_planes[n].reference_peak_intensity for n in out_spec.focal_plane_names
             ]
             ref_sums = [
-                self._c.focal_planes[n].reference_psf_sum
-                for n in out_spec.focal_plane_names
+                self._c.focal_planes[n].reference_psf_sum for n in out_spec.focal_plane_names
             ]
             ctx = PipelineContext(
                 output_name=out_spec.name,

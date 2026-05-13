@@ -18,7 +18,7 @@ modifying telescope-sim.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import TypeVar
 
 T = TypeVar("T", bound=type)
 
@@ -39,9 +39,7 @@ registry: dict[str, dict[str, type]] = {kind: {} for kind in _KINDS}
 def register(kind: str, name: str) -> Callable[[T], T]:
     """Decorator: register a class as a named implementation of a pipeline-stage kind."""
     if kind not in registry:
-        raise ValueError(
-            f"Unknown registry kind {kind!r}; valid kinds: {sorted(registry)}"
-        )
+        raise ValueError(f"Unknown registry kind {kind!r}; valid kinds: {sorted(registry)}")
 
     def _decorator(cls: T) -> T:
         existing = registry[kind].get(name)
@@ -61,9 +59,7 @@ def lookup(kind: str, name: str) -> type:
         raise KeyError(f"Unknown registry kind {kind!r}")
     if name not in registry[kind]:
         available = sorted(registry[kind])
-        raise KeyError(
-            f"{kind}/{name} is not registered. Available {kind} types: {available}"
-        )
+        raise KeyError(f"{kind}/{name} is not registered. Available {kind} types: {available}")
     return registry[kind][name]
 
 

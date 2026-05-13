@@ -108,9 +108,30 @@ def test_write_read_roundtrip(tmp_path: Path):
     assert json.loads(p.read_text())["fixture_id"] == "rt"
 
 
-def test_committed_fiber_digest_is_well_formed():
-    """The committed fiber digest should load and round-trip-compare to itself
-    when re-fed (i.e. the schema is internally consistent)."""
+def test_all_committed_digests_are_well_formed():
+    """Every committed digest should be a v1.0 record with at least one output
+    and a non-empty fixture id matching the directory name."""
+    digests_root = (
+        Path(__file__).resolve().parents[2] / "fixtures/runner/digests"
+    )
+    digest_files = sorted(digests_root.glob("*/expected.json"))
+    if not digest_files:
+        pytest.skip("no fixture digests captured in this checkout")
+
+    for path in digest_files:
+        d = read_digest(path)
+        assert d["schema_version"] == DIGEST_SCHEMA_VERSION, f"{path}: bad schema version"
+        assert d["fixture_id"] == path.parent.name, f"{path}: fixture_id mismatch"
+        assert d["outputs"], f"{path}: no outputs"
+        # Every output entry must have shape, dtype, stats, samples
+        for name, out in d["outputs"].items():
+            assert "shape" in out and "dtype" in out, f"{path}/{name}: missing core fields"
+            assert "stats" in out and "samples" in out, f"{path}/{name}: missing stats/samples"
+            assert isinstance(out["shape"], list) and len(out["shape"]) >= 1
+
+
+def test_committed_fiber_digest_specifics():
+    """Targeted sanity check for the fiber digest's known shape."""
     digest_path = (
         Path(__file__).resolve().parents[2]
         / "fixtures/runner/digests/15_fiber_mmf/expected.json"
@@ -118,7 +139,4 @@ def test_committed_fiber_digest_is_well_formed():
     if not digest_path.exists():
         pytest.skip("fiber digest not captured in this checkout")
     d = read_digest(digest_path)
-    assert d["fixture_id"] == "15_fiber_mmf"
-    assert d["schema_version"] == DIGEST_SCHEMA_VERSION
-    assert "x" in d["outputs"] and "y" in d["outputs"]
     assert d["outputs"]["x"]["shape"] == [2, 128, 128, 1]

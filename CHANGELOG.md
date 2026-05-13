@@ -62,5 +62,5 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/morphoptic/telescope-sim/compare/v2.0.0a1...HEAD
-[2.0.0a1]: https://github.com/morphoptic/telescope-sim/releases/tag/v2.0.0a1
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a1...HEAD
+[2.0.0a1]: https://github.com/icunnyngham/telescope-sim/releases/tag/v2.0.0a1

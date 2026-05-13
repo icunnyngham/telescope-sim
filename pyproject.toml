@@ -70,10 +70,10 @@ fixtures = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/morphoptic/telescope-sim"
+Homepage = "https://github.com/icunnyngham/telescope-sim"
 Documentation = "https://telescope-sim.readthedocs.io"
-Repository = "https://github.com/morphoptic/telescope-sim"
-Issues = "https://github.com/morphoptic/telescope-sim/issues"
+Repository = "https://github.com/icunnyngham/telescope-sim"
+Issues = "https://github.com/icunnyngham/telescope-sim/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,6 +1,6 @@
 # telescope-sim
 
-[![CI](https://github.com/morphoptic/telescope-sim/actions/workflows/testing.yml/badge.svg)](https://github.com/morphoptic/telescope-sim/actions/workflows/testing.yml)
+[![CI](https://github.com/icunnyngham/telescope-sim/actions/workflows/testing.yml/badge.svg)](https://github.com/icunnyngham/telescope-sim/actions/workflows/testing.yml)
 [![Docs](https://readthedocs.org/projects/telescope-sim/badge/?version=latest)](https://telescope-sim.readthedocs.io)
 [![PyPI](https://img.shields.io/pypi/v/telescope-sim.svg)](https://pypi.org/project/telescope-sim/)
 [![Python](https://img.shields.io/pypi/pyversions/telescope-sim.svg)](https://pypi.org/project/telescope-sim/)

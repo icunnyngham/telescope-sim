@@ -10,7 +10,7 @@ From PyPI (once published)::
 
 From source::
 
-    git clone https://github.com/morphoptic/telescope-sim.git
+    git clone https://github.com/icunnyngham/telescope-sim.git
     cd telescope-sim
     conda env create -f envs/env-dev.yaml
     conda activate telescope-sim-dev

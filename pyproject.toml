@@ -1,0 +1,113 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telescope-sim"
+dynamic = ["version"]
+description = "Composable, config-driven simulation of multi-aperture telescope PSFs, DMs, coronagraphs, and fiber coupling — built on HCIPy."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+    { name = "Ian Cunnyngham", email = "ian@morphoptic.com" },
+]
+keywords = [
+    "astronomy",
+    "optics",
+    "telescope",
+    "psf",
+    "adaptive-optics",
+    "coronagraphy",
+    "hcipy",
+    "simulation",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = [
+    "hcipy>=0.6",
+    "pydantic>=2.0",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.5",
+    "mypy>=1.0",
+    "ipykernel",
+    "ipywidgets",
+]
+doc = [
+    "sphinx>=7.0",
+    "sphinx_rtd_theme",
+    "nbsphinx",
+    "sphinx-automodapi",
+    "numpydoc",
+    "jupyter_client",
+    "nbclient",
+    "nbformat",
+    "nbconvert",
+    "ipykernel",
+]
+fixtures = [
+    # Extras for the regression-suite tooling (digest writers, comparisons).
+    "matplotlib",
+    "tqdm",
+]
+
+[project.urls]
+Homepage = "https://github.com/morphoptic/telescope-sim"
+Documentation = "https://telescope-sim.readthedocs.io"
+Repository = "https://github.com/morphoptic/telescope-sim"
+Issues = "https://github.com/morphoptic/telescope-sim/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+telescope_sim = [
+    "presets/*.yaml",
+    "helpers/**/*.py",
+]
+
+[tool.setuptools_scm]
+write_to = "src/telescope_sim/_version.py"
+fallback_version = "0.0.0+unknown"
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (run with --runslow)",
+    "fixture: end-to-end regression against a captured fixture digest",
+]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PL"]
+ignore = ["PLR0913", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+plugins = ["pydantic.mypy"]

@@ -1,0 +1,95 @@
+# --- Reference / scratch material kept locally but never committed -----------
+# All of these are dev-time scratch areas — not part of the polished package.
+# They live alongside the repo for cross-reference and regression-suite
+# development, but their contents do not enter git history.
+
+# Local clone of HCIPy for cross-reference
+hcipy/
+
+# Local clone of the legacy v1.x canonical package
+TelescopeSim/
+
+# Forks of the legacy class kept for dev cross-reference
+variants/
+
+# Setup notebooks + configs scraped from prior projects
+test_fixtures/
+
+# Working design-rationale doc; superseded by docs/ when published
+DESIGN_CHALLENGES.md
+
+# AI-assistant context for refactor work
+CLAUDE.md
+
+# Pickle files are not version-portable across HCIPy/Python releases
+*.pkl
+
+# --- Generated golden-output digests (commit these once captured) -------------
+# Note: these ARE committed; this rule just excludes any raw tensor dumps
+fixtures/runner/raw_tensors/
+
+# --- Python build / install artifacts ----------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Setuptools-scm
+src/telescope_sim/_version.py
+
+# --- Virtual envs & tooling --------------------------------------------------
+.venv/
+venv/
+env/
+.python-version
+.tox/
+.nox/
+.cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# --- Notebooks ---------------------------------------------------------------
+.ipynb_checkpoints/
+
+# --- Sphinx ------------------------------------------------------------------
+docs/_build/
+docs/api/_autosummary/
+docs/tutorials/*.rst
+docs/tutorials/*.png
+!docs/tutorials/.gitkeep
+
+# --- Editors / OS ------------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Claude Code -------------------------------------------------------------
+.claude/
+
+# --- Misc --------------------------------------------------------------------
+*.log

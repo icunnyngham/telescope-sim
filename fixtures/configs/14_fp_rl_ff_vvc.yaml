@@ -1,0 +1,62 @@
+# Reproduces the legacy fixture 14_fp_rl_ff_vvc (RL fork of #13).
+# Same setup as #13; the variant only differs by an RL-friendly zero-init
+# default in sample(), which doesn't affect the at-rest output.
+
+pupil:
+  resolution: 256
+  extent: 8.1795
+
+aperture:
+  type: external_pupil
+  module: test_fixtures/helpers/miles_synthpsf/fp_rl_24-05_ff_vvc.py
+  function: generate_pupil
+  mode: field
+  kwargs:
+    outer: 0.9835858585858586
+  area: 190.6630
+
+correctors:
+  zernike_dm:
+    type: zernike
+    n_modes: 35
+    zernike_diameter: 7.79
+    starting_mode: 2
+    actuate_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [zernike_dm]
+
+coronagraph:
+  type: vector_vortex
+  charge: 4
+  lyot:
+    type: external_pupil
+    module: test_fixtures/helpers/miles_synthpsf/fp_rl_24-05_ff_vvc.py
+    function: generate_pupil
+    mode: field
+    kwargs:
+      outer: 0.9
+      inner: 0.43
+      scale: 1.4
+      spider_scale: 1.6
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 7.48e-7
+    focal_extent: 0.768
+    focal_res: 128
+    fractional_bandwidth: 0.06417112299
+    num_samples: 5
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing:
+      - type: per_sample_norm
+
+strehl_core_rad: null

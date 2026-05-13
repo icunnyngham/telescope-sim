@@ -18,6 +18,7 @@ from numpy.typing import ArrayLike, NDArray
 from telescope_sim.abc import (
     Aperture,
     ApertureResult,
+    Coronagraph,
     Corrector,
     FocalPlane,
     OutputTap,
@@ -47,6 +48,7 @@ class _PipelineComponents:
     focal_planes: dict[str, FocalPlane]
     outputs: list[_OutputSpec]
     strehl_core_rad: float | None = None
+    coronagraph: Coronagraph | None = None
 
 
 class TelescopeSim:
@@ -156,15 +158,19 @@ class TelescopeSim:
                     "fit-source resolution is not yet implemented."
                 )
 
-        # 3) Propagate each focal plane and collect summed-intensity PSFs.
-        psf_by_focal: dict[str, NDArray[np.floating]] = {}
+        # 3) Propagate each focal plane and collect FocalPlaneResult objects
+        #    (each holds both summed intensity and per-wavelength wavefronts
+        #    so downstream taps can pick what they need).
+        fp_results: dict[str, Any] = {}
         for name, fp in self._c.focal_planes.items():
-            psf_by_focal[name] = fp._propagate_chain(self._c.correctors)
+            fp_results[name] = fp._propagate_chain(
+                self._c.correctors, coronagraph=self._c.coronagraph
+            )
 
         # 4) Run output taps + per-output post-processors.
         images: dict[str, NDArray] = {}
         for out_spec in self._c.outputs:
-            arr = out_spec.tap.extract(psf_by_focal)
+            arr = out_spec.tap.extract(fp_results)
 
             # Build context for post-processors
             ref_peaks = [
@@ -219,11 +225,12 @@ class TelescopeSim:
                 ref_peak = fp.reference_peak_intensity
                 if ref_peak is None:
                     continue
+                psf_arr = fp_results[name].intensity
                 if self._c.strehl_core_rad is None:
-                    strehls[name] = peak_pixel_strehl(psf_by_focal[name], ref_peak)
+                    strehls[name] = peak_pixel_strehl(psf_arr, ref_peak)
                 else:
                     strehls[name] = core_integral_strehl(
-                        psf_by_focal[name],
+                        psf_arr,
                         fp.reference_psf,
                         fp.lam_setup.focal_grid,
                         self._c.strehl_core_rad,

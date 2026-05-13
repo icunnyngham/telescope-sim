@@ -1,0 +1,52 @@
+# Reproduces the legacy fixture 03_multi_aperture_dm_psf (early DM variant).
+# Setup: mini-ELF with mir_diameter=0.4975 + spider, single 1um filter.
+# Legacy variant constructs an internal Xinetics DM and an SM; at rest
+# both are flat and act as identity on the wavefront, so we reproduce
+# with just the segmented_ptt corrector (the DM is unnecessary for the
+# at-rest case). Full Xinetics-in-chain support lands in a later step
+# when fixtures actually exercise a non-zero DM.
+
+pupil:
+  resolution: 256
+  extent: 3.1329949753
+
+aperture:
+  type: segmented_circular
+  segment_diameter: 0.4975
+  layout: elf
+  n_segments: 15
+  ring_radius: 1.25
+  supersample: 1
+  spider:
+    width: 0.001
+    angle: 0  # degrees
+
+correctors:
+  segments:
+    type: segmented_ptt
+    piston_scale: 0.25e-6
+    tip_tilt_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [segments]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 4.35
+    focal_res: 128
+    fractional_bandwidth: 0.05
+    num_samples: 3
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing:
+      - type: max_intensity_norm
+
+strehl_core_rad: null

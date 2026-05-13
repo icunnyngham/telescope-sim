@@ -1,0 +1,59 @@
+# Reproduces the legacy fixture 15_fiber_mmf (2025-06 fiber MMF coupling).
+# Single 3.5 m circular sub-aperture, physical focal plane (extent in
+# meters, with explicit focal_length), 32-mode Zernike DM, and a fiber-
+# dual output tap that stacks focal-plane intensity with multi-mode-fiber
+# coupled intensity.
+#
+# Note: the legacy variant constructs the sampler with `dm=None` and then
+# externally attaches a Zernike DM. v2 just declares the Zernike DM
+# directly. Functionally equivalent at rest (DM is flat in both cases).
+
+pupil:
+  resolution: 256
+  extent: 3.675   # 1.05 * 3.5
+
+aperture:
+  type: segmented_circular
+  segment_diameter: 3.5
+  layout: custom
+  positions: [[0.0, 0.0]]   # single sub-aperture at origin
+  supersample: 16
+
+correctors:
+  zernike_dm:
+    type: zernike
+    n_modes: 32
+    zernike_diameter: 3.5
+    starting_mode: 1   # legacy fiber capture used N_ZERNS=32 starting at 1
+    actuate_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [zernike_dm]
+
+focal_planes:
+  filter1:
+    type: physical
+    central_lam: 6.35e-7
+    focal_extent: 5.25e-4   # 2.5 * rcore where rcore = 210 um
+    focal_res: 128
+    focal_length: 32.5
+    fractional_bandwidth: 0.001574803  # 1/635
+    num_samples: 7
+    wavefront_total_power: 1.0   # legacy fiber variant explicitly normalizes
+
+outputs:
+  x:
+    tap:
+      type: fiber_dual
+      focal_plane_name: filter1
+      fiber:
+        type: step_index
+        core_radius: 2.1e-4
+        NA: 0.1
+        fiber_length: 7.4e-3
+        max_in_cache: 7
+    post_processing: []
+
+strehl_core_rad: null

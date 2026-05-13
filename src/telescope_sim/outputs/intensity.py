@@ -42,24 +42,26 @@ class IntensityOutputTap(OutputTap):
         # composite source string for diagnostics.
         self.source = "focal:" + ",".join(self.focal_plane_names)
 
-    def extract(self, wf: Any) -> NDArray[np.floating]:
-        """Extract from a dict mapping focal_plane name → 2D PSF intensity.
+    def extract(self, fp_results: Any) -> NDArray[np.floating]:
+        """Extract from a dict mapping focal_plane name → FocalPlaneResult.
 
-        The pipeline orchestrator builds this dict by running each focal
-        plane's chain-propagation once per ``sample()``.
+        Uses the summed-intensity field from each focal plane and stacks
+        channels-last so the canonical ``(H, W, n_filters)`` layout falls out.
         """
-        if not isinstance(wf, dict):
+        if not isinstance(fp_results, dict):
             raise TypeError(
-                "IntensityOutputTap.extract expects a dict {focal_plane_name: psf}; "
-                f"got {type(wf).__name__}"
+                "IntensityOutputTap.extract expects a dict of FocalPlaneResults; "
+                f"got {type(fp_results).__name__}"
             )
-        missing = [n for n in self.focal_plane_names if n not in wf]
+        missing = [n for n in self.focal_plane_names if n not in fp_results]
         if missing:
             raise KeyError(
-                f"focal planes {missing} not in available outputs {list(wf)}"
+                f"focal planes {missing} not in available outputs {list(fp_results)}"
             )
-        # Stack channels-last to match the canonical layout
-        psfs = [np.asarray(wf[n], dtype=np.float64) for n in self.focal_plane_names]
+        psfs = [
+            np.asarray(fp_results[n].intensity, dtype=np.float64)
+            for n in self.focal_plane_names
+        ]
         return np.stack(psfs, axis=-1)
 
 

@@ -1,4 +1,4 @@
-"""Regression tests: v2 pipeline reproduces the canonical-family digests.
+"""Regression tests: v2 pipeline reproduces the committed legacy digests.
 
 Marked ``slow`` since each test runs the full optical chain end-to-end.
 Run with ``pytest --runslow tests/fixtures/`` (or ``make test-slow``).
@@ -21,8 +21,15 @@ from digest_lib import Tolerance, all_ok, compare_digest, read_digest  # noqa: E
 CANONICAL_FIXTURES = [
     "01_canonical_2024-09",
     "02_phase_workhorse",
+    "03_multi_aperture_dm_psf",
+    "07_coro_original",
+    "08_ffcoro_2023-02",
+    "09_vampires_base",
     "10_near_canonical_A",
     "11_near_canonical_B",
+    "13_vvc_flexible",
+    "14_fp_rl_ff_vvc",
+    "15_fiber_mmf",
 ]
 
 
@@ -47,18 +54,21 @@ def test_canonical_v2_reproduces_digest(
     assert config_path.is_file(), f"missing v2 config at {config_path}"
     assert digest_path.is_file(), f"missing digest at {digest_path}"
 
+    recorded = read_digest(digest_path)
+    expected_outputs = set(recorded["outputs"])
+
     sim = telescope_sim_module.TelescopeSim.from_yaml(config_path)
     np.random.seed(42)
-    out = sim.sample(meas_strehl=True)
+    out = sim.sample(meas_strehl=("strehls" in expected_outputs))
 
+    image_name = next(iter(out["images"]))
     actuator_name = next(iter(out["actuations"]))
     actual = {
-        "x": np.asarray(out["images"]["psf"]),
+        "x": np.asarray(out["images"][image_name]),
         "y": np.asarray(out["actuations"][actuator_name]),
     }
-    if out.get("strehls"):
+    if "strehls" in expected_outputs and out.get("strehls"):
         actual["strehls"] = np.array(list(out["strehls"].values()))
 
-    recorded = read_digest(digest_path)
     results = compare_digest(actual, recorded)
     assert all_ok(results), "\n".join(str(r) for r in results)

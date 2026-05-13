@@ -28,5 +28,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Fixture regression suite (`tests/fixtures/test_canonical.py`)
   reproducing fixtures #01, #02, #10, #11 within numerical tolerance
   against their committed legacy digests.
+- `segmented_circular` aperture: optional spider config (two perpendicular
+  spiders) matching the canonical implementation.
+- `external_pupil` aperture: wraps an arbitrary callable that produces an
+  HCIPy aperture field or aperture function. Supports importing from a
+  dotted module name or a filesystem path. Unlocks fixtures that use
+  `miles_pupil`, `miles_synthpsf`, or HCIPy's built-in
+  `make_keck_aperture` / `make_obstructed_circular_aperture`.
+- `zernike` corrector: Zernike-mode deformable mirror with peak-normalized
+  modes and pupil-grid late binding (so configs stay HCIPy-object-free).
+- `vortex`, `vector_vortex`, and `identity` coronagraphs. Reference PSFs
+  are generated with the coronagraph bypassed (legacy convention).
+- `physical` focal plane: metric focal grid + explicit `focal_length`,
+  with an optional `wavefront_total_power` for variant-specific
+  normalization. Retains per-wavelength focal Wavefronts for fiber-style
+  taps.
+- `fiber_dual` output tap: stacks focal-plane intensity with multi-mode
+  fiber coupling along axis 0. Matches the legacy fiber variant's
+  `(2, H, W, 1)` layout.
+- Regression suite now covers all 10 in-scope fixtures (`#01`–`#15`
+  excluding `#04`/`#05`/`#06` pre-HCIPy prototypes and `#12` which has
+  broken variant code).
 
 [Unreleased]: https://github.com/morphoptic/telescope-sim/compare/HEAD...HEAD

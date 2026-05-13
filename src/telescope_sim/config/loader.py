@@ -17,13 +17,19 @@ import hcipy
 import yaml
 
 # Side-effect imports: populate the registry with all stock implementations
+import telescope_sim.apertures.external_pupil  # noqa: F401
 import telescope_sim.apertures.segmented_circular  # noqa: F401
+import telescope_sim.coronagraphs  # noqa: F401
 import telescope_sim.correctors.segmented_ptt  # noqa: F401
+import telescope_sim.correctors.zernike  # noqa: F401
 import telescope_sim.focal_planes.angular  # noqa: F401
+import telescope_sim.focal_planes.physical  # noqa: F401
+import telescope_sim.outputs.fiber_dual  # noqa: F401
 import telescope_sim.outputs.intensity  # noqa: F401
 import telescope_sim.post  # noqa: F401  (post-processor package imports its modules)
 from telescope_sim.abc import (
     Aperture,
+    Coronagraph,
     Corrector,
     FocalPlane,
     OutputTap,
@@ -86,8 +92,9 @@ def build(config: SimConfig) -> TelescopeSim:
         cls = lookup("corrector", type_name)
 
         # Some correctors need the aperture's segments/segment_coords at
-        # construction time; supply them by introspection here. (A more
-        # general dependency-injection scheme can come later if needed.)
+        # construction time; supply them by introspection here. Others just
+        # need the pupil grid (via _bind_pupil_grid). A more general
+        # dependency-injection scheme can come later if needed.
         if type_name == "segmented_ptt":
             corr = cls(
                 segments=aperture_result.segments,
@@ -96,10 +103,11 @@ def build(config: SimConfig) -> TelescopeSim:
                 **role_kwargs,
                 **payload,
             )
-            # Precompute segment-pixel data for fit_surface() if ever called.
-            corr._bind_pupil_grid(pupil_grid, aperture_result.field)
         else:
             corr = cls(name=name, **role_kwargs, **payload)
+        # Correctors that need a pupil-grid-aware setup register it here.
+        if hasattr(corr, "_bind_pupil_grid"):
+            corr._bind_pupil_grid(pupil_grid, aperture_result.field)
         correctors_by_name[name] = corr
 
     # Honor the explicit chain order if given; otherwise iterate config order.
@@ -112,7 +120,21 @@ def build(config: SimConfig) -> TelescopeSim:
         )
     corrector_chain = [correctors_by_name[n] for n in chain_names]
 
-    # 4) Focal planes
+    # 4) Coronagraph (optional). Built before the focal planes so that the
+    #    reference-PSF generation can deliberately bypass it.
+    coronagraph: Coronagraph | None = None
+    if config.coronagraph is not None:
+        coro_payload = config.coronagraph.model_dump()
+        coro_type = coro_payload.pop("type")
+        coro_cls = lookup("coronagraph", coro_type)
+        coronagraph = coro_cls(**coro_payload)
+        if hasattr(coronagraph, "_bind_pupil_grid"):
+            coronagraph._bind_pupil_grid(pupil_grid)
+
+    # 5) Focal planes — built fresh; correctors are at-rest (zero) here
+    #    because they were just constructed and nothing has called
+    #    set_actuators() yet. Reference PSFs are computed without the
+    #    coronagraph (matches legacy convention).
     focal_planes: dict[str, FocalPlane] = {}
     for fp_name, fp_cfg in config.focal_planes.items():
         payload = fp_cfg.model_dump()
@@ -120,17 +142,9 @@ def build(config: SimConfig) -> TelescopeSim:
         cls = lookup("focal_plane", type_name)
         fp = cls(name=fp_name, **payload)
         fp.build(pupil_grid, aperture_result.field)
-        # Flatten all correctors temporarily for the reference PSF
-        saved_states = [c._sm.actuators.copy() if hasattr(c, "_sm") else None
-                        for c in corrector_chain]
         for c in corrector_chain:
             c.flatten()
         fp.compute_reference_psf(corrector_chain)
-        # Restore (caller is expected to set actuators on sample() anyway,
-        # but be conservative)
-        for c, st in zip(corrector_chain, saved_states, strict=True):
-            if st is not None:
-                c._sm.actuators = st
         focal_planes[fp_name] = fp
 
     # 5) Outputs (tap + ordered post-processors)
@@ -169,6 +183,7 @@ def build(config: SimConfig) -> TelescopeSim:
         focal_planes=focal_planes,
         outputs=outputs,
         strehl_core_rad=config.strehl_core_rad,
+        coronagraph=coronagraph,
     )
     return TelescopeSim.from_components(components)
 

@@ -1,0 +1,63 @@
+# Reproduces the legacy fixture 08_ffcoro_2023-02. Same VortexCoronagraph
+# charge=2 setup as #07 but with 35 Zernike modes, num_samples=3, and
+# no normalization in post-processing (max_inten_norm=False).
+
+pupil:
+  resolution: 256
+  extent: 12.0
+
+aperture:
+  type: external_pupil
+  module: hcipy
+  function: make_keck_aperture
+  mode: callable
+  kwargs:
+    normalized: false
+    with_spiders: true
+    with_segment_gaps: true
+  supersample: 8
+  area: 91.527
+
+correctors:
+  zernike_dm:
+    type: zernike
+    n_modes: 35
+    zernike_diameter: 8.7
+    starting_mode: 2
+    actuate_scale: 7.928e-7
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [zernike_dm]
+
+coronagraph:
+  type: vortex
+  charge: 2
+  lyot:
+    type: external_pupil
+    module: hcipy.aperture
+    function: make_obstructed_circular_aperture
+    mode: callable
+    kwargs:
+      pupil_diameter: 7.395
+      central_obscuration_ratio: 0.3
+    supersample: 8
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 2.196e-6
+    focal_extent: 0.636288
+    focal_res: 64
+    fractional_bandwidth: 0.05
+    num_samples: 3
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing: []   # max_inten_norm=False, per_sample_norm=False
+
+strehl_core_rad: null

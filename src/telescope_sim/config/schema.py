@@ -69,6 +69,7 @@ class SimConfig(BaseModel):
     aperture: StageConfig
     correctors: dict[str, CorrectorConfig] = Field(default_factory=dict)
     corrector_chain: list[str] = Field(default_factory=list)
+    coronagraph: StageConfig | None = None
     focal_planes: dict[str, StageConfig]
     outputs: dict[str, OutputConfig]
     strehl_core_rad: float | None = None

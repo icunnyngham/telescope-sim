@@ -39,7 +39,12 @@ class SegmentedCircularAperture(Aperture):
         Explicit (N, 2) list of (x, y) coordinates (required for "custom").
     supersample
         Supersampling factor for aperture evaluation (default 16, matching
-        the canonical implementation).
+        the canonical 2024-09 implementation; older variants used 1).
+    spider
+        Optional dict ``{width, angle}``. If provided, two perpendicular
+        spiders are multiplied into the aperture mask. ``angle`` is in
+        degrees; the second spider is offset by 90°. Mirrors the canonical
+        spider construction.
     """
 
     segment_diameter: float
@@ -48,6 +53,7 @@ class SegmentedCircularAperture(Aperture):
     ring_radius: float | None = None
     positions: NDArray[np.floating] | None = None
     supersample: int = 16
+    spider: dict | None = None
 
     def __post_init__(self) -> None:
         if self.layout not in ("elf", "custom"):
@@ -82,6 +88,32 @@ class SegmentedCircularAperture(Aperture):
         segments = hcipy.evaluate_supersampled(
             segments_callables, pupil_grid, self.supersample
         )
+
+        # Optional spider — multiply into the aperture mask (does NOT affect
+        # segment masks, which the canonical implementations also leave alone).
+        if self.spider is not None:
+            width = float(self.spider["width"])
+            angle_deg = float(self.spider.get("angle", 0.0))
+            angle = angle_deg * np.pi / 180.0
+            # Use the pupil grid's extent as the spider half-length
+            x_arr = np.asarray(pupil_grid.x)
+            y_arr = np.asarray(pupil_grid.y)
+            p_ext = float(
+                max(x_arr.max() - x_arr.min(), y_arr.max() - y_arr.min())
+            )
+            s1_start = (p_ext * np.cos(angle), p_ext * np.sin(angle))
+            s1_end = (p_ext * np.cos(angle + np.pi), p_ext * np.sin(angle + np.pi))
+            s2_start = (
+                p_ext * np.cos(angle + np.pi / 2),
+                p_ext * np.sin(angle + np.pi / 2),
+            )
+            s2_end = (
+                p_ext * np.cos(angle + np.pi + np.pi / 2),
+                p_ext * np.sin(angle + np.pi + np.pi / 2),
+            )
+            spider1 = hcipy.aperture.generic.make_spider(s1_start, s1_end, width)
+            spider2 = hcipy.aperture.generic.make_spider(s2_start, s2_end, width)
+            aper_field = aper_field * spider1(pupil_grid) * spider2(pupil_grid)
 
         D = self.segment_diameter
         area = n_seg * np.pi * (D / 2.0) ** 2

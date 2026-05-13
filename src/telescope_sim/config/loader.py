@@ -1,17 +1,55 @@
-"""YAML loader — parses a config file into a validated :class:`SimConfig`.
+"""YAML loader — parses a config file, validates it, and builds the pipeline.
 
-Currently a thin ``yaml.safe_load`` + ``SimConfig.model_validate``. Preset
-resolution and registered-implementation lookup will be added once the full
-schema lands.
+Resolves stage types via :mod:`telescope_sim.registry`, instantiates the
+concrete classes, and assembles a :class:`telescope_sim.pipeline.TelescopeSim`.
+
+Triggering imports of the standard implementations as a side effect of
+importing this module ensures the registry is populated before any
+config is resolved.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+import hcipy
 import yaml
 
-from telescope_sim.config.schema import SimConfig
+# Side-effect imports: populate the registry with all stock implementations
+import telescope_sim.apertures.segmented_circular  # noqa: F401
+import telescope_sim.correctors.segmented_ptt  # noqa: F401
+import telescope_sim.focal_planes.angular  # noqa: F401
+import telescope_sim.outputs.intensity  # noqa: F401
+import telescope_sim.post  # noqa: F401  (post-processor package imports its modules)
+from telescope_sim.abc import (
+    Aperture,
+    Corrector,
+    FocalPlane,
+    OutputTap,
+    PostProcessor,
+)
+from telescope_sim.config.schema import SimConfig, StageConfig
+from telescope_sim.pipeline import (
+    TelescopeSim,
+    _OutputSpec,
+    _PipelineComponents,
+)
+from telescope_sim.registry import lookup
+
+
+def _instantiate(kind: str, cfg: StageConfig | dict | str, **extras: Any) -> Any:
+    """Resolve and construct a registered implementation from a stage config."""
+    if isinstance(cfg, str):
+        cls = lookup(kind, cfg)
+        return cls(**extras)
+    if isinstance(cfg, StageConfig):
+        payload = cfg.model_dump()
+    else:
+        payload = dict(cfg)
+    type_name = payload.pop("type")
+    cls = lookup(kind, type_name)
+    return cls(**payload, **extras)
 
 
 def load_yaml(path: str | Path) -> SimConfig:
@@ -21,4 +59,136 @@ def load_yaml(path: str | Path) -> SimConfig:
     return SimConfig.model_validate(data)
 
 
-__all__ = ["load_yaml"]
+def build(config: SimConfig) -> TelescopeSim:
+    """Instantiate a TelescopeSim from a validated config."""
+    # 1) Pupil grid
+    pupil_grid = hcipy.make_pupil_grid(
+        config.pupil.resolution, config.pupil.extent
+    )
+
+    # 2) Aperture
+    aperture_impl: Aperture = _instantiate("aperture", config.aperture)
+    aperture_result = aperture_impl.build(pupil_grid)
+
+    # 3) Correctors
+    correctors_by_name: dict[str, Corrector] = {}
+    for name, corr_cfg in config.correctors.items():
+        # Strip the role-related fields from the payload before passing the
+        # remainder to the implementation constructor.
+        payload = corr_cfg.model_dump()
+        role_kwargs = {
+            "wavefront_role": payload.pop("wavefront_role"),
+            "target_strategy": payload.pop("target_strategy"),
+            "fit_source": payload.pop("fit_source"),
+            "target": payload.pop("target"),
+        }
+        type_name = payload.pop("type")
+        cls = lookup("corrector", type_name)
+
+        # Some correctors need the aperture's segments/segment_coords at
+        # construction time; supply them by introspection here. (A more
+        # general dependency-injection scheme can come later if needed.)
+        if type_name == "segmented_ptt":
+            corr = cls(
+                segments=aperture_result.segments,
+                segment_coords=aperture_result.segment_coords,
+                name=name,
+                **role_kwargs,
+                **payload,
+            )
+            # Precompute segment-pixel data for fit_surface() if ever called.
+            corr._bind_pupil_grid(pupil_grid, aperture_result.field)
+        else:
+            corr = cls(name=name, **role_kwargs, **payload)
+        correctors_by_name[name] = corr
+
+    # Honor the explicit chain order if given; otherwise iterate config order.
+    chain_names = config.corrector_chain or list(correctors_by_name)
+    missing = [n for n in chain_names if n not in correctors_by_name]
+    if missing:
+        raise ValueError(
+            f"corrector_chain references unknown correctors: {missing}; "
+            f"defined: {list(correctors_by_name)}"
+        )
+    corrector_chain = [correctors_by_name[n] for n in chain_names]
+
+    # 4) Focal planes
+    focal_planes: dict[str, FocalPlane] = {}
+    for fp_name, fp_cfg in config.focal_planes.items():
+        payload = fp_cfg.model_dump()
+        type_name = payload.pop("type")
+        cls = lookup("focal_plane", type_name)
+        fp = cls(name=fp_name, **payload)
+        fp.build(pupil_grid, aperture_result.field)
+        # Flatten all correctors temporarily for the reference PSF
+        saved_states = [c._sm.actuators.copy() if hasattr(c, "_sm") else None
+                        for c in corrector_chain]
+        for c in corrector_chain:
+            c.flatten()
+        fp.compute_reference_psf(corrector_chain)
+        # Restore (caller is expected to set actuators on sample() anyway,
+        # but be conservative)
+        for c, st in zip(corrector_chain, saved_states, strict=True):
+            if st is not None:
+                c._sm.actuators = st
+        focal_planes[fp_name] = fp
+
+    # 5) Outputs (tap + ordered post-processors)
+    outputs: list[_OutputSpec] = []
+    for out_name, out_cfg in config.outputs.items():
+        # Tap
+        tap_payload = out_cfg.tap.model_dump()
+        tap_type = tap_payload.pop("type")
+        tap_cls = lookup("output_tap", tap_type)
+        # The intensity tap takes focal_plane_names; other tap types may
+        # take different args, but for Phase 2 we only have intensity.
+        if "focal_planes" in tap_payload:
+            tap_payload["focal_plane_names"] = tap_payload.pop("focal_planes")
+        tap: OutputTap = tap_cls(name=out_name, **tap_payload)
+
+        # Post-processors
+        pps: list[PostProcessor] = []
+        for pp_cfg in out_cfg.post_processing:
+            pps.append(_instantiate("post_processor", pp_cfg))
+
+        # Track which focal planes this output references (for ctx-building)
+        fp_names = list(
+            getattr(tap, "focal_plane_names", [])
+            or ([tap.source] if isinstance(tap.source, str) else [])
+        )
+        outputs.append(
+            _OutputSpec(
+                name=out_name, tap=tap, post_processors=pps, focal_plane_names=fp_names
+            )
+        )
+
+    components = _PipelineComponents(
+        pupil_grid=pupil_grid,
+        aperture=aperture_result,
+        correctors=corrector_chain,
+        focal_planes=focal_planes,
+        outputs=outputs,
+        strehl_core_rad=config.strehl_core_rad,
+    )
+    return TelescopeSim.from_components(components)
+
+
+def build_from_yaml(path: str | Path) -> TelescopeSim:
+    """Convenience: load a YAML file and build the pipeline in one step."""
+    return build(load_yaml(path))
+
+
+def build_from_preset(name: str) -> TelescopeSim:
+    """Resolve a preset name to a packaged YAML and build the pipeline."""
+    preset_path = Path(__file__).resolve().parent.parent / "presets" / f"{name}.yaml"
+    if not preset_path.is_file():
+        # List available presets for the error message
+        presets_dir = preset_path.parent
+        available = sorted(p.stem for p in presets_dir.glob("*.yaml"))
+        raise ValueError(
+            f"unknown preset {name!r}; available: {available or '(none)'}"
+        )
+    return build_from_yaml(preset_path)
+
+
+__all__ = ["load_yaml", "build", "build_from_yaml", "build_from_preset"]

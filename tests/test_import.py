@@ -55,8 +55,18 @@ def test_register_duplicate_raises() -> None:
                 return None
 
 
-def test_telescopesim_stub_raises() -> None:
+def test_from_preset_unknown_lists_available() -> None:
+    """Asking for a nonexistent preset reports what's actually available."""
     from telescope_sim import TelescopeSim
 
-    with pytest.raises(NotImplementedError, match="not yet implemented"):
-        TelescopeSim.from_preset("elf_7seg")
+    with pytest.raises(ValueError, match="unknown preset"):
+        TelescopeSim.from_preset("__does_not_exist__")
+
+
+def test_from_preset_elf_15seg_builds() -> None:
+    """The bundled mini-ELF preset constructs a usable pipeline."""
+    from telescope_sim import TelescopeSim
+
+    sim = TelescopeSim.from_preset("elf_15seg")
+    assert "segments" in sim.correctors
+    assert set(sim.focal_planes) == {"filter1", "filter2"}

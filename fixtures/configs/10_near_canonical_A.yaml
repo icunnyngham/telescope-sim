@@ -1,0 +1,44 @@
+# Reproduces the legacy fixture 10_near_canonical_A (~2023 mini-ELF, low res).
+# Single filter, per_sample_norm normalization (no max_intensity_norm).
+
+pupil:
+  resolution: 64
+  extent: 3.1329949753  # (2*1.25 + 0.4975) * 1.05
+
+aperture:
+  type: segmented_circular
+  segment_diameter: 0.4975
+  layout: elf
+  n_segments: 15
+  ring_radius: 1.25
+  supersample: 1  # pre-2024-09 variant did not supersample the aperture
+
+correctors:
+  segments:
+    type: segmented_ptt
+    piston_scale: 1.0e-6
+    tip_tilt_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [segments]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 0.75e-6
+    focal_extent: 1.3248      # 0.0207 arcsec/pix * 64
+    focal_res: 64
+    fractional_bandwidth: 0.172
+    num_samples: 3
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing:
+      - type: per_sample_norm
+
+strehl_core_rad: null

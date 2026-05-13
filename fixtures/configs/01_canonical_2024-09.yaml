@@ -1,0 +1,52 @@
+# Reproduces the legacy fixture 01_canonical_2024-09 in the v2 pipeline.
+# Same setup as the elf_15seg preset (the preset is in fact derived from
+# this fixture's capture).
+
+pupil:
+  resolution: 256
+  extent: 3.1563881637
+
+aperture:
+  type: segmented_circular
+  segment_diameter: 0.5197792270
+  layout: elf
+  n_segments: 15
+  ring_radius: 1.25
+  supersample: 16
+
+correctors:
+  segments:
+    type: segmented_ptt
+    piston_scale: 1.0e-6
+    tip_tilt_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [segments]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 0.5e-6
+    focal_extent: 1.0
+    focal_res: 128
+    fractional_bandwidth: 0.05
+    num_samples: 5
+  filter2:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 1.0
+    focal_res: 128
+    fractional_bandwidth: 0.05
+    num_samples: 5
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1, filter2]
+    post_processing:
+      - type: max_intensity_norm
+
+strehl_core_rad: null

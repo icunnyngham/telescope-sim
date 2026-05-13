@@ -13,9 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 import hcipy
+import yaml
 
 # Side-effect imports: populate the registry with all stock implementations
 import telescope_sim.apertures.external_pupil  # noqa: F401

@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 import hcipy
+
 from telescope_sim.abc import Aperture, Coronagraph
 from telescope_sim.registry import lookup, register
 

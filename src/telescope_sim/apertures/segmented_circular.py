@@ -13,10 +13,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import hcipy
 import numpy as np
 from numpy.typing import NDArray
 
-import hcipy
 from telescope_sim.abc import Aperture, ApertureResult
 from telescope_sim.registry import register
 

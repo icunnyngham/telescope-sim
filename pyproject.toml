@@ -100,6 +100,17 @@ addopts = "-ra --strict-markers"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+# Tell ruff which directory is the first-party source. Without this, ruff
+# walks the project root looking for top-level dirs that match imports and
+# can misclassify locally cloned reference libraries (e.g. the gitignored
+# `hcipy/` clone we keep for cross-reference) as first-party. With `src`
+# set, only `src/telescope_sim` is first-party — matches CI behaviour where
+# `hcipy` lives in site-packages.
+src = ["src"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["telescope_sim"]
+known-third-party = ["hcipy", "pydantic", "numpy", "scipy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "PL"]

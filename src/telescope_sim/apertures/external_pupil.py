@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import hcipy
+
 from telescope_sim.abc import Aperture, ApertureResult
 from telescope_sim.registry import register
 

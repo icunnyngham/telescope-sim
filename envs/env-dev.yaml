@@ -12,6 +12,7 @@ dependencies:
   - ipykernel
   - ipywidgets
   - tqdm
+  - pandoc           # nbsphinx requires pandoc to convert notebooks
   - pip:
       - hcipy>=0.6
       - pydantic>=2.0

@@ -11,49 +11,68 @@ mirrors, coronagraphs, and fiber coupling — built on [HCIPy](https://hcipy.org
 
 `telescope-sim` provides a pluggable pipeline of optical stages (aperture,
 correctors, coronagraph, focal plane, output taps, post-processing), a
-YAML-driven configuration schema, and a fixture-based regression suite. It's
-designed to be extensible — users can register their own implementations of
-each stage without modifying the package.
+YAML-driven configuration schema, and a fixture-based regression suite. Users
+can register their own implementations of any stage without modifying the
+package.
 
 ## Status
 
-🚧 **Alpha.** Architecture and scaffolding only; concrete optical-stage
-implementations land in subsequent phases.
+🟡 **Alpha (v2.0.0a1).** The pipeline is wired end-to-end and reproduces 10
+reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
+generators, Zernike-mode DMs, vortex and vector-vortex coronagraphs, angular
+and physical focal planes, and multi-mode-fiber dual outputs.
 
-## Quick start (planned API)
+## Quick start
 
 ```python
 from telescope_sim import TelescopeSim
 import numpy as np
 
-# One-liner: load a preset
-sim = TelescopeSim.from_preset("elf_7seg")
+# Bundled preset (mini-ELF, 15 segments, 2 filters)
+sim = TelescopeSim.from_preset("elf_15seg")
 
-# Or load custom YAML
+# Or a custom YAML
 sim = TelescopeSim.from_yaml("path/to/config.yaml")
 
-# Step atmosphere (caller-driven, RL-friendly)
-sim.atmosphere.evolve_until(0.01)
+# Sample at rest with Strehl ratios
+out = sim.sample(meas_strehl=True)
+out["images"]["psf"]      # (H, W, n_filters)
+out["strehls"]            # {filter_name: ratio}
 
-# Generate a sample
-out = sim.sample(
-    actuations={"segments": np.zeros((7, 3))},
-    meas_strehl=True,
-)
-out["images"]["psf"]      # ndarray, (channels, H, W)
-out["actuations"]         # echoed back per target corrector
-out["strehls"]            # if requested
+# Apply per-segment piston/tip/tilt actuations
+ptt = np.random.normal(scale=0.1, size=(15, 3))
+out = sim.sample(actuations={"segments": ptt}, meas_strehl=True)
 ```
 
-## Architecture (one paragraph)
+See [docs/tutorials/](docs/tutorials) for runnable notebooks that exercise the
+canonical mini-ELF, vortex coronagraph, custom-pupil + Zernike DM, and fiber
+MMF paths.
 
-The pipeline is a linear chain of pupil-plane stages (atmosphere → aperture →
-correctors → coronagraph) that fans out at the pupil→focal boundary to one or more
-named focal planes, each producing tapped outputs (intensity, fiber-coupled, phase)
-that flow through ordered post-processing. Every stage is a registered, pluggable
-implementation of a small ABC. Configs are YAML (validated by pydantic). Atmosphere
-lives in the chain but the caller drives time evolution. See
-[DESIGN_CHALLENGES.md](DESIGN_CHALLENGES.md) for the long-form design discussion.
+## Architecture
+
+The pipeline is a linear chain of pupil-plane stages (aperture → correctors →
+optional coronagraph) followed by a controlled fan-out at the pupil → focal
+boundary, where one or more named focal planes consume the same pupil-plane
+wavefront. Each focal plane feeds one or more `OutputTap`s, whose outputs flow
+through ordered post-processors. Every stage is a registered, pluggable
+implementation of a small ABC. Configs are YAML, validated by pydantic v2.
+
+```
+[aperture] → [correctors: c1 → c2 → ... → cN] → [coronagraph?]
+                                                    │
+                                       ┌────────────┼────────────┐
+                                       ▼            ▼            ▼
+                                  focal plane  focal plane   focal plane
+                                       │            │            │
+                                     tap(s)       tap(s)       tap(s)
+                                       │            │            │
+                                    post-proc    post-proc    post-proc
+```
+
+Corrector roles (`actuate` / `impose` / `fit` plus a `target_strategy`) express
+the patterns observed across years of research code: model-driven DMs, imposed
+atmospheres, fit-residual training targets, and stacked combinations of those.
+See [docs/concepts.rst](docs/concepts.rst) for the full discussion.
 
 ## Development
 
@@ -62,12 +81,16 @@ lives in the chain but the caller drives time evolution. See
 conda env create -f envs/env-dev.yaml
 conda activate telescope-sim-dev
 
+# After creation, pip may have picked up a local hcipy/ clone; force-replace
+# with the PyPI build:
+pip uninstall -y hcipy && pip install "hcipy>=0.6"
+
 # Install editable with dev extras
 pip install -e ".[dev,doc]"
 
 # Run tests
 pytest                  # fast tests only
-pytest --runslow        # includes fixture regression suite
+pytest --runslow        # includes the full fixture regression suite
 
 # Build docs
 cd docs && make html

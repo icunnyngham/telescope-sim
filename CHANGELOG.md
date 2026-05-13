@@ -49,5 +49,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Regression suite now covers all 10 in-scope fixtures (`#01`–`#15`
   excluding `#04`/`#05`/`#06` pre-HCIPy prototypes and `#12` which has
   broken variant code).
+- Sphinx documentation: getting-started, concepts, configuration
+  reference, and an auto-built tutorial suite (`docs/tutorials/`) with
+  one notebook per major capability path (canonical mini-ELF, vortex
+  coronagraph, miles_pupil + Zernike DM, fiber MMF). Notebooks are
+  pre-executed and rendered by `nbsphinx`.
+- `telescope_sim.legacy.SimulateMultiApertureTelescope` — a best-effort
+  v1.x compatibility shim that maps the common kwargs (ELF / monolithic
+  layouts, single filter, segmented PTT) to a v2 config. Emits a
+  `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
+  yet.
 
 [Unreleased]: https://github.com/morphoptic/telescope-sim/compare/HEAD...HEAD

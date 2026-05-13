@@ -6,6 +6,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a1] - 2026-05-13
+
 ### Added
 - Initial package scaffolding: `pyproject.toml`, `src/telescope_sim/` package
   layout, dev environment YAML, CI workflows, MIT license.
@@ -60,4 +62,5 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/morphoptic/telescope-sim/compare/HEAD...HEAD
+[Unreleased]: https://github.com/morphoptic/telescope-sim/compare/v2.0.0a1...HEAD
+[2.0.0a1]: https://github.com/morphoptic/telescope-sim/releases/tag/v2.0.0a1

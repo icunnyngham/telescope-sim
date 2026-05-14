@@ -24,6 +24,9 @@ CLAUDE.md
 # Working implementation notes (scratchpad; not part of polished package)
 IMPLEMENTATION_NOTES.md
 
+# Framework experiments / prototype components (local scratchpad)
+experiments/
+
 # Legacy-fixture capture scripts — dev-only tooling that imports legacy code
 # from local-only directories. Once a digest is captured and committed under
 # fixtures/runner/digests/, the capture script is no longer needed at runtime.

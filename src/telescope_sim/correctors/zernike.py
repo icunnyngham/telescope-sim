@@ -67,6 +67,8 @@ class ZernikeCorrector(Corrector):
         # Populated by :meth:`_bind_pupil_grid` (called by the pipeline loader)
         self._dm: Any | None = None
         self._basis: Any | None = None
+        self._basis_matrix: NDArray[np.floating] | None = None
+        self._aperture_mask: NDArray[np.bool_] | None = None
 
     def _bind_pupil_grid(self, pupil_grid: Any, aperture_field: Any) -> None:
         """Build the Zernike basis + HCIPy DM on a given pupil grid."""
@@ -80,6 +82,12 @@ class ZernikeCorrector(Corrector):
         basis = hcipy.ModeBasis([b / np.max(np.abs(b)) for b in basis])
         self._basis = basis
         self._dm = hcipy.DeformableMirror(basis)
+
+        # Stack into a (n_pix, n_modes) matrix for the lstsq fit.
+        self._basis_matrix = np.column_stack([np.asarray(m, dtype=float).ravel() for m in basis])
+        # Aperture mask: only fit phase over transmitting pixels (matches
+        # legacy `_aprox_via_dm` which slices via `self.aper_sel`).
+        self._aperture_mask = np.asarray(aperture_field, dtype=float).ravel() > 0
 
     # --- Corrector interface ----------------------------------------------
 
@@ -104,23 +112,32 @@ class ZernikeCorrector(Corrector):
             self._dm.actuators = np.zeros(self.n_modes)
 
     def fit_surface(self, phase: NDArray[np.floating]) -> NDArray[np.floating]:
-        """Project a pupil-plane phase onto the Zernike basis.
+        """Project a pupil-plane OPD onto the Zernike basis.
 
-        Returns caller-facing actuator amplitudes (i.e. divided by
-        ``actuate_scale``). Standard mode projection: dot the phase with
-        each mode (the modes are peak-normalized to ~1, so this gives
-        amplitudes in those normalized units).
+        Input is OPD in meters (path-length); output is caller-facing
+        actuator amplitudes that *reproduce* that OPD as this DM's
+        surface contribution (matching, not cancellation — see
+        :meth:`Corrector.fit_surface` for the convention). Modes are
+        peak-normalized; this is the standard diagonal projection,
+        which is exact when the basis is orthogonal over the aperture
+        footprint (e.g. a clean circular aperture).
+
+        The ``/ 2.0`` is the surface→OPD round-trip factor: setting
+        actuator value ``v`` produces surface ``v * actuate_scale``
+        but contributes ``2 * v * actuate_scale`` to the OPD.
         """
-        if self._basis is None:
+        if self._basis_matrix is None or self._aperture_mask is None:
             raise RuntimeError("fit_surface() before _bind_pupil_grid()")
-        phase = np.asarray(phase, dtype=float)
-        amps = np.zeros(self.n_modes)
-        for i, mode in enumerate(self._basis):
-            mode_arr = np.asarray(mode)
-            denom = float(np.sum(mode_arr * mode_arr))
-            if denom > 0:
-                amps[i] = float(np.sum(phase * mode_arr) / denom)
-        return amps / self.actuate_scale
+        phase = np.asarray(phase, dtype=float).ravel()
+        # Solve B[mask] @ amps = phase[mask] in the least-squares sense.
+        # Matches legacy `_aprox_via_dm`: lstsq on aperture-masked pixels.
+        # This is exact when the basis is linearly independent over the
+        # aperture support (the usual case), even if individual modes
+        # aren't strictly orthogonal on the discrete grid.
+        B = self._basis_matrix[self._aperture_mask]
+        rhs = phase[self._aperture_mask]
+        amps, _, _, _ = np.linalg.lstsq(B, rhs, rcond=None)
+        return amps / (2.0 * self.actuate_scale)
 
     @property
     def n_actuators(self) -> int:

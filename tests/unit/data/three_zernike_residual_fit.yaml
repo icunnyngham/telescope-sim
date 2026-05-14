@@ -1,0 +1,68 @@
+# Test config for tests/unit/test_residual_fit.py.
+#
+# Three identical Zernike DMs over a clean circular aperture (no spider,
+# no central obstruction) so the Zernike basis is orthogonal over the
+# aperture footprint. dm1 and dm2 are `impose`; dm3 is `fit` against the
+# cumulative pre-self OPD. After sample(), dm3's actuators should exactly
+# cancel dm1+dm2 → PSF matches reference.
+
+pupil:
+  resolution: 64
+  extent: 1.05
+
+aperture:
+  type: external_pupil
+  module: hcipy
+  function: make_circular_aperture
+  mode: callable
+  kwargs:
+    diameter: 1.0
+  area: 0.7853981633974483  # pi * (0.5)^2
+
+correctors:
+  dm1:
+    type: zernike
+    n_modes: 8
+    zernike_diameter: 1.0
+    starting_mode: 2
+    actuate_scale: 1.0e-7
+    wavefront_role: impose
+    target_strategy: none
+  dm2:
+    type: zernike
+    n_modes: 8
+    zernike_diameter: 1.0
+    starting_mode: 2
+    actuate_scale: 1.0e-7
+    wavefront_role: impose
+    target_strategy: none
+  dm3:
+    type: zernike
+    n_modes: 8
+    zernike_diameter: 1.0
+    starting_mode: 2
+    actuate_scale: 1.0e-7
+    wavefront_role: fit
+    fit_source: cumulative_phase_pre_self
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [dm1, dm2, dm3]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 1.0e-5
+    focal_res: 64
+    fractional_bandwidth: 0.0
+    num_samples: 1
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing: []
+
+strehl_core_rad: null

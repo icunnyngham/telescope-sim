@@ -94,6 +94,7 @@ testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (run with --runslow)",
     "fixture: end-to-end regression against a captured fixture digest",
+    "fiber: long-running fiber/MMF fixture (run with --runfiber, separate from --runslow)",
 ]
 addopts = "-ra --strict-markers"
 

@@ -88,12 +88,31 @@ class Corrector(ABC):
         self.set_actuators(np.zeros(self.n_actuators))
 
     def fit_surface(self, phase: NDArray[np.floating]) -> NDArray[np.floating]:
-        """Fit the corrector's actuator basis to a pupil-plane phase array.
+        """Fit the corrector's actuator basis to a pupil-plane OPD array.
 
         Required when participating in ``role=fit`` or
         ``target_strategy=actuators_plus_residual_fit`` / ``residual_fit_only``.
         Default implementation raises :class:`NotImplementedError` to make
         misconfiguration visible.
+
+        Convention
+        ----------
+        - **Input** ``phase``: pupil-plane optical path difference (OPD) in
+          meters — i.e. path-length, ``OPD = 2 * surface`` for a single DM
+          reflection. The pipeline accumulates this as it walks the chain.
+        - **Output**: *matching* caller-facing actuator values — i.e. values
+          that, when set via :meth:`set_actuators`, would *reproduce* the
+          input OPD as this corrector's surface contribution (modulo the
+          round-trip factor; surface = OPD / 2).
+        - **Sign**: matching, not cancellation. To cancel the input OPD,
+          the caller negates. The pipeline does this automatically at the
+          apply site for ``wavefront_role="fit"``.
+        - **Y echoes** for ``target_strategy="actuators_plus_residual_fit"``
+          and ``"residual_fit_only"`` consume ``fit_surface`` *unnegated*:
+          Y reports the wavefront state in this corrector's basis (matches
+          legacy v1 ``out_actuate = caller + matching_fit(atmos)``). An ML
+          model trained to predict Y is then driven through ``-Y`` by the
+          downstream controller to cancel.
         """
         raise NotImplementedError(
             f"{type(self).__name__} does not support fit_surface(). "

@@ -85,24 +85,31 @@ class SegmentedPTTCorrector(Corrector):
                 f"expected shape ({self._n_segments}, 3) or "
                 f"({3 * self._n_segments},), got {arr.shape}"
             )
-        scaled = ptt.copy()
-        scaled[:, 0] *= self.piston_scale
-        scaled[:, 1:] *= self.tip_tilt_scale
-        # HCIPy's SegmentedDeformableMirror takes a flat (3*n_seg,) vector
-        # where each segment contributes 3 consecutive values.
-        self._sm.actuators = scaled.reshape(-1)
+        # HCIPy's SegmentedDeformableMirror stores actuators in *block*
+        # layout: ``[p_0..p_{n-1}, t_0..t_{n-1}, T_0..T_{n-1}]`` (see
+        # ``hcipy.SegmentedDeformableMirror.set_segment_actuators``).
+        # Match the canonical v1 pattern, which calls
+        # ``sm.set_segment_actuators(np.arange(n), pist, tip, tilt)``.
+        self._sm.set_segment_actuators(
+            np.arange(self._n_segments),
+            ptt[:, 0] * self.piston_scale,
+            ptt[:, 1] * self.tip_tilt_scale,
+            ptt[:, 2] * self.tip_tilt_scale,
+        )
 
     def flatten(self) -> None:
         self._sm.actuators = np.zeros(3 * self._n_segments)
 
     def fit_surface(self, phase: NDArray[np.floating]) -> NDArray[np.floating]:
-        """Per-segment least-squares fit of piston/tip/tilt to a pupil-plane phase.
+        """Per-segment least-squares fit of piston/tip/tilt to a pupil-plane OPD.
 
-        This mirrors the canonical ``_measure_atmos_ptt`` pattern: for each
-        segment, fit ``phase ≈ p + t_x*x + t_y*y`` over the segment's pixels.
-        Returns an ``(n_segments, 3)`` array of piston/tip/tilt slopes
-        scaled to caller-facing units (i.e. divided by piston_scale and
-        tip_tilt_scale, and the standard /2 path-length factor applied).
+        Mirrors the canonical v1 ``_measure_atmos_ptt`` (see
+        :class:`Corrector.fit_surface` for the convention). Input is OPD
+        in meters; for each segment, fits ``OPD ≈ p + t_x*x + t_y*y``
+        over the segment's pixels. Returns matching caller-facing PTT —
+        an ``(n_segments, 3)`` array divided by ``piston_scale`` /
+        ``tip_tilt_scale`` and by 2 (surface→OPD round-trip). Global
+        mean piston removed (doesn't affect PSF).
         """
         if not hasattr(self, "_segment_pixel_data"):
             raise RuntimeError(
@@ -136,11 +143,19 @@ class SegmentedPTTCorrector(Corrector):
 
     @property
     def actuators(self) -> NDArray:
-        """Return the *caller-facing* (n_segments, 3) PTT values."""
-        raw = np.asarray(self._sm.actuators).reshape(self._n_segments, 3)
-        out = raw.copy()
-        out[:, 0] /= self.piston_scale
-        out[:, 1:] /= self.tip_tilt_scale
+        """Return the *caller-facing* (n_segments, 3) PTT values.
+
+        HCIPy stores actuators in block layout
+        ``[p_0..p_{n-1}, t_0..t_{n-1}, T_0..T_{n-1}]`` (not row-major);
+        de-interleave back to the per-segment ``(p, t, T)`` rows
+        callers expect.
+        """
+        raw = np.asarray(self._sm.actuators)
+        n = self._n_segments
+        out = np.empty((n, 3), dtype=float)
+        out[:, 0] = raw[0:n] / self.piston_scale
+        out[:, 1] = raw[n : 2 * n] / self.tip_tilt_scale
+        out[:, 2] = raw[2 * n : 3 * n] / self.tip_tilt_scale
         return out
 
     @property
@@ -154,15 +169,28 @@ class SegmentedPTTCorrector(Corrector):
 
         Called by the pipeline once at construction time so that
         :meth:`fit_surface` can run later.
+
+        Segment masks are made disjoint via argmax across segments —
+        each transmitting pixel is assigned to the single segment whose
+        anti-aliased mask value is largest there. Touching segments
+        (e.g. the elf_15seg ring where center-to-center spacing equals
+        segment diameter) otherwise share boundary pixels through
+        anti-aliasing, polluting per-segment fits.
         """
         x_coords = pupil_grid.x
         y_coords = pupil_grid.y
         aper_arr = np.asarray(aperture_field)
+
+        # Stack all segment masks into (n_pix, n_seg); assign each
+        # transmitting pixel to its argmax-segment.
+        seg_stack = np.column_stack([np.asarray(s, dtype=float) for s in self._sm.segments])
+        any_seg = seg_stack.max(axis=1) > 0
+        labels = np.where(any_seg, seg_stack.argmax(axis=1), -1)
+        aper_ok = aper_arr != 0
+
         data: list[dict[str, NDArray]] = []
         for i, (cx, cy) in enumerate(self._segment_coords):
-            # Pixels belonging to segment i: any pixel where the i-th segment
-            # mask is non-zero AND inside the (spider-cropped) aperture.
-            seg_mask = (np.asarray(self._sm.segments[i]) != 0) & (aper_arr != 0)
+            seg_mask = (labels == i) & aper_ok
             inds = np.where(seg_mask)[0]
             xs = x_coords[inds] - cx
             ys = y_coords[inds] - cy

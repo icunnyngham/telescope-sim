@@ -27,6 +27,19 @@ from telescope_sim.abc import (
 from telescope_sim.strehl import core_integral_strehl, peak_pixel_strehl
 
 
+def _mirror_of(corrector: Any) -> Any | None:
+    """Return the HCIPy DM-like object backing a corrector, or None.
+
+    Looks for ``_dm`` (``hcipy.DeformableMirror``, used by Zernike +
+    custom basis correctors) then ``_sm``
+    (``hcipy.SegmentedDeformableMirror``, used by ``SegmentedPTTCorrector``).
+    Both expose ``.surface`` in meters of surface displacement. Returns
+    ``None`` for correctors that don't back onto a DM, so the pipeline
+    skips them in OPD bookkeeping.
+    """
+    return getattr(corrector, "_dm", None) or getattr(corrector, "_sm", None)
+
+
 @dataclass
 class _OutputSpec:
     """Per-output configuration assembled from the YAML schema."""
@@ -105,7 +118,7 @@ class TelescopeSim:
 
     # --- Main entry point --------------------------------------------------
 
-    def sample(  # noqa: PLR0912  (orchestration: the branching reflects the chain stages)
+    def sample(  # noqa: PLR0912,PLR0915  (orchestration: branches + statements reflect chain stages)
         self,
         actuations: Mapping[str, ArrayLike] | None = None,
         *,
@@ -142,16 +155,60 @@ class TelescopeSim:
                     c.set_actuators(values)
             # "fit" correctors are resolved below
 
-        # 2) Resolve "fit" correctors (lstsq fit to another corrector's surface
-        #    or to a named wavefront). For Phase 2 (canonical family) this is
-        #    a no-op; the path lands when Xinetics / fit-source patterns come
-        #    in. Stub kept for clarity.
+        # 2) Walk the chain in order, accumulating per-corrector cumulative
+        #    pupil-plane OPD (= 2 × surface) "just before this corrector"
+        #    and resolving fit-role correctors against it as we go. The
+        #    snapshots are also saved for step 5 (residual-fit target
+        #    strategies). Convention: fit_surface returns *matching*
+        #    actuator values; we negate at the apply site for fit-role.
+        correctors_by_name = {c.name: c for c in self._c.correctors}
+        running_opd = np.zeros(self._c.pupil_grid.size, dtype=np.float64)
+        cum_opd_pre: list[NDArray[np.float64]] = []
+        seen_names: set[str] = set()
+
         for c in self._c.correctors:
+            cum_opd_pre.append(running_opd.copy())
+
             if c.wavefront_role == "fit":
-                raise NotImplementedError(
-                    f"corrector {c.name!r} has wavefront_role='fit' but "
-                    "fit-source resolution is not yet implemented."
-                )
+                fs = c.fit_source
+                if fs is None or fs == "cumulative_phase_pre_self":
+                    phase_in = cum_opd_pre[-1]
+                elif fs in correctors_by_name and fs in seen_names:
+                    other = correctors_by_name[fs]
+                    other_mirror = _mirror_of(other)
+                    if other_mirror is None:
+                        raise ValueError(
+                            f"corrector {c.name!r} fit_source={fs!r} "
+                            "refers to a corrector with no DM surface to "
+                            "fit to."
+                        )
+                    phase_in = 2.0 * np.asarray(other_mirror.surface)
+                elif fs in correctors_by_name:
+                    raise ValueError(
+                        f"corrector {c.name!r} has wavefront_role='fit' with "
+                        f"fit_source={fs!r}, but that corrector appears "
+                        "later in the chain. fit_source must reference an "
+                        "earlier corrector or use "
+                        "'cumulative_phase_pre_self'."
+                    )
+                else:
+                    raise ValueError(
+                        f"corrector {c.name!r} has unknown fit_source={fs!r}. "
+                        "Use 'cumulative_phase_pre_self' or the name of an "
+                        "earlier corrector in the chain."
+                    )
+                fit_values = np.asarray(c.fit_surface(phase_in))
+                c.set_actuators(-fit_values)
+
+            # After this corrector's state is finalized, add its OPD
+            # contribution to the running cumulative. Any corrector
+            # exposing an HCIPy DM-like object via ``_dm`` (regular DM)
+            # or ``_sm`` (segmented DM) contributes here.
+            mirror = _mirror_of(c)
+            if mirror is not None:
+                running_opd = running_opd + 2.0 * np.asarray(mirror.surface)
+
+            seen_names.add(c.name)
 
         # 3) Propagate each focal plane and collect FocalPlaneResult objects
         #    (each holds both summed intensity and per-wavelength wavefronts
@@ -188,23 +245,27 @@ class TelescopeSim:
                 arr = pp(arr, ctx)
             images[out_spec.name] = np.asarray(arr)
 
-        # 5) Build the actuation echo / Y output.
+        # 5) Build the actuation echo / Y output. Residual-fit strategies
+        #    use the per-corrector cumulative-OPD snapshot computed in
+        #    step 2. Convention: fit_surface returns *matching* values
+        #    (the wavefront state in the corrector's basis), so the Y
+        #    formulas below are unnegated — Y reports "what is at the
+        #    pupil"; the ML model trainer applies -Y downstream to drive
+        #    corrections. Matches legacy v1 ``out_actuate = caller +
+        #    matching_fit(atmos)``.
         actuator_echo: dict[str, NDArray] = {}
-        for c in self._c.correctors:
+        for i, c in enumerate(self._c.correctors):
             if not c.target:
+                continue
+            if c.target_strategy == "none":
                 continue
             if c.target_strategy == "actuators":
                 actuator_echo[c.name] = np.asarray(c.actuators)
-            elif c.target_strategy == "none":
-                continue
-            elif c.target_strategy in (
-                "actuators_plus_residual_fit",
-                "residual_fit_only",
-            ):
-                raise NotImplementedError(
-                    f"target_strategy={c.target_strategy!r} not yet wired up "
-                    "(needs cumulative-phase tracking)."
-                )
+            elif c.target_strategy == "actuators_plus_residual_fit":
+                residual = np.asarray(c.fit_surface(cum_opd_pre[i]))
+                actuator_echo[c.name] = np.asarray(c.actuators) + residual
+            elif c.target_strategy == "residual_fit_only":
+                actuator_echo[c.name] = np.asarray(c.fit_surface(cum_opd_pre[i]))
 
         result: dict[str, Any] = {
             "images": images,

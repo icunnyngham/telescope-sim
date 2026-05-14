@@ -28,7 +28,10 @@ CANONICAL_FIXTURES = [
     "11_near_canonical_B",
     "13_vvc_flexible",
     "14_fp_rl_ff_vvc",
-    "15_fiber_mmf",
+    # 15_fiber_mmf carries an extra ``fiber`` mark — it dominates the
+    # --runslow runtime (HCIPy LP-fiber mode solve is slow) and is not
+    # run on GitHub CI. Opt in locally with --runfiber.
+    pytest.param("15_fiber_mmf", marks=pytest.mark.fiber),
 ]
 
 

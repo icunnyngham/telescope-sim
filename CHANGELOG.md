@@ -6,6 +6,76 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a3] - 2026-05-13
+
+### Added
+- Cumulative pupil-plane OPD tracking in `TelescopeSim.sample()`,
+  enabling two previously-stubbed paths:
+  - `wavefront_role="fit"` correctors are now resolved at sample
+    time. `fit_source` accepts the special value
+    `"cumulative_phase_pre_self"` (default for residual-fit targets,
+    fits to the cumulative OPD from all earlier correctors in the
+    chain) or another corrector's name (must appear earlier in the
+    chain; raises `ValueError` for forward references or unknown
+    names).
+  - `target_strategy="actuators_plus_residual_fit"` and
+    `"residual_fit_only"` Y echoes are now computed from per-corrector
+    cumulative-OPD snapshots — matches the legacy v1
+    `out_actuate = caller + matching_fit(atmos)` semantic. ML targets
+    report the wavefront state in the corrector's basis; the model
+    trainer applies `-Y` downstream to drive corrections.
+- Headline regression test
+  `tests/unit/test_residual_fit.py::test_three_identical_zernike_fit_cancels_impose`:
+  three identical Zernike DMs over a clean circular aperture, two
+  `impose` with random actuators, one `fit` with
+  `cumulative_phase_pre_self`; verifies the fit DM's actuators land at
+  `-(a1 + a2)` exactly and PSF matches the at-rest reference to
+  machine precision. Plus 7 supporting tests covering the matching
+  convention, all three target-strategy echo formulas (including the
+  ML-residual semantic with idle / perfect-cancellation / partial-
+  cancellation sub-cases), and `fit_source` variants.
+
+### Changed
+- New ``@pytest.mark.fiber`` marker for the MMF fixture, plus a
+  matching ``--runfiber`` flag in ``tests/conftest.py``. The fiber/MMF
+  fixture dominated ``--runslow`` runtime (~14 min total) and isn't run
+  by GitHub CI. ``pytest --runslow`` now runs the other 10 canonical
+  fixtures only; opt in to fiber with ``pytest --runslow --runfiber``.
+
+### Fixed
+- `ZernikeCorrector.fit_surface` (latent — previously unreachable
+  through the pipeline):
+  - Missing `/2` surface→OPD round-trip factor added; pipeline feeds
+    OPD = 2×surface, so the factor must live inside the method to
+    match the v1 `_aprox_via_dm` precedent.
+  - Switched from diagonal mode projection (approximate when modes
+    aren't strictly orthogonal on a discrete grid) to lstsq over
+    aperture-masked pixels, matching legacy `_aprox_via_dm` and
+    giving exact recovery on clean apertures.
+- `SegmentedPTTCorrector.set_actuators` and `actuators`
+  property — actuator layout bug. HCIPy's `SegmentedDeformableMirror`
+  stores actuators in **block** layout
+  (`[p_0..p_{n-1}, t_0..t_{n-1}, T_0..T_{n-1}]`), but both the setter
+  (row-major `reshape(-1)`) and getter (`reshape(n, 3)`) treated it
+  as row-major, scrambling P/T/T across segments whenever the caller
+  set non-zero values. Switched to HCIPy's `set_segment_actuators`
+  API (the v1 pattern) and block-layout de-interleaving in the
+  getter. Canonical regression digests unaffected (all canonical
+  fixtures sample at zero actuators).
+- `SegmentedPTTCorrector._bind_pupil_grid` — segment-mask overlap.
+  Previously identified each segment's pixels via `_sm.segments[i]
+  != 0`, but anti-aliased segment masks extend across geometric
+  boundaries, so touching segments (e.g. the elf_15seg ring where
+  center-to-center spacing equals segment diameter) shared pixels.
+  Now argmax-assigns each transmitting pixel to its single dominant
+  segment, making per-segment fits disjoint and exact.
+- Clarified `Corrector.fit_surface` ABC docstring: returns *matching*
+  (positive) caller-facing actuator values for the input pupil-plane
+  OPD; the pipeline negates at the apply site for
+  `wavefront_role="fit"`. Y-echo formulas (`actuators + fit_surface`
+  etc.) consume the unnegated value — Y reports the wavefront state,
+  the ML controller applies `-Y` to cancel.
+
 ## [2.0.0a2] - 2026-05-13
 
 ### Changed

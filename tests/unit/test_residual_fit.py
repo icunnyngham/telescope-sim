@@ -58,10 +58,13 @@ def test_three_identical_zernike_fit_cancels_impose():
 
     res = sim.sample({"dm1": a1, "dm2": a2})
 
-    # dm3's actuators end up at -(a1+a2): pipeline applied
-    # -fit_surface(2*(S1+S2)) which (for orthogonal basis on a circular
-    # aperture) is -(a1+a2) exactly up to numerical precision.
-    np.testing.assert_allclose(res["actuations"]["dm3"], -(a1 + a2), atol=1e-10)
+    # dm3's actuators end up at ~-(a1+a2): pipeline applied
+    # -fit_surface(2*(S1+S2)). The atol=1e-5 (instead of machine
+    # precision) reflects a tiny rank-1 perturbation introduced by
+    # the pre-fit mean-subtract — Zernike modes Z_2..Z_n aren't
+    # exactly zero-mean over a *discrete* aperture, so subtracting
+    # the input mean shifts the lstsq solution by O(1e-6).
+    np.testing.assert_allclose(res["actuations"]["dm3"], -(a1 + a2), atol=1e-5)
 
     # And the PSF should equal the at-rest reference, since residual
     # cumulative OPD across the chain is zero.
@@ -90,7 +93,10 @@ def test_fit_surface_matches_zernike():
     opd = 2.0 * np.asarray(dm._dm.surface)  # surface → OPD
     fit = dm.fit_surface(opd)
 
-    np.testing.assert_allclose(fit, a, atol=1e-10)
+    # See test_three_identical_zernike_fit_cancels_impose for the
+    # rationale behind the 1e-5 (instead of machine-precision)
+    # tolerance.
+    np.testing.assert_allclose(fit, a, atol=1e-5)
 
 
 def test_fit_surface_matches_segmented_ptt():
@@ -159,17 +165,17 @@ def test_actuators_plus_residual_fit_reports_residual_error():
 
     # (a) dm3 idle: Y reports the full disturbance
     res = sim.sample({"dm1": a1, "dm2": a2, "dm3": np.zeros(8)})
-    np.testing.assert_allclose(res["actuations"]["dm3"], a1 + a2, atol=1e-10)
+    np.testing.assert_allclose(res["actuations"]["dm3"], a1 + a2, atol=1e-5)
 
     # (b) dm3 perfectly cancels: Y reports zero residual
     res = sim.sample({"dm1": a1, "dm2": a2, "dm3": -(a1 + a2)})
-    np.testing.assert_allclose(res["actuations"]["dm3"], np.zeros(8), atol=1e-10)
+    np.testing.assert_allclose(res["actuations"]["dm3"], np.zeros(8), atol=1e-5)
 
     # (c) dm3 imperfectly cancels — model overshoots/undershoots by `r`.
     # Y isolates the residual: actuators + matching = -(a1+a2) + r + (a1+a2) = r.
     r = rng.normal(scale=0.01, size=8)
     res = sim.sample({"dm1": a1, "dm2": a2, "dm3": -(a1 + a2) + r})
-    np.testing.assert_allclose(res["actuations"]["dm3"], r, atol=1e-10)
+    np.testing.assert_allclose(res["actuations"]["dm3"], r, atol=1e-5)
 
 
 def test_target_strategy_residual_fit_only():
@@ -192,7 +198,7 @@ def test_target_strategy_residual_fit_only():
     res = sim.sample({"dm1": a1, "dm2": a2, "dm3": arbitrary_a3})
 
     # Y is the matching fit of cum_pre_self = a1+a2, regardless of a3.
-    np.testing.assert_allclose(res["actuations"]["dm3"], a1 + a2, atol=1e-10)
+    np.testing.assert_allclose(res["actuations"]["dm3"], a1 + a2, atol=1e-5)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +224,7 @@ def test_fit_source_by_corrector_name():
     res = sim.sample({"dm1": a1, "dm2": a2})
 
     # dm3 cancels dm1 (not dm2).
-    np.testing.assert_allclose(res["actuations"]["dm3"], -a1, atol=1e-10)
+    np.testing.assert_allclose(res["actuations"]["dm3"], -a1, atol=1e-5)
 
 
 def test_fit_source_forward_reference_raises():
@@ -244,3 +250,63 @@ def test_fit_source_unknown_name_raises():
     )
     with pytest.raises(ValueError, match="unknown fit_source"):
         sim.sample({"dm1": np.zeros(8), "dm2": np.zeros(8)})
+
+
+# ---------------------------------------------------------------------------
+# Pre-fit mean-subtract tests — defensive against non-zero-mean inputs
+# ---------------------------------------------------------------------------
+
+
+def test_zernike_fit_surface_immune_to_constant_offset():
+    """A constant offset added to the input must not leak into the
+    non-piston Zernike modes. The corrector's ``starting_mode=2``
+    means piston isn't in the basis, so without pre-fit mean-subtract
+    the offset would distort modes 2..N.
+    """
+    sim = build_from_yaml(YAML_PATH)
+    dm = sim.correctors["dm1"]
+
+    rng = np.random.default_rng(10)
+    a = rng.normal(scale=0.1, size=8)
+    dm.set_actuators(a)
+    opd_clean = 2.0 * np.asarray(dm._dm.surface)
+
+    fit_clean = dm.fit_surface(opd_clean)
+    # Add a large constant offset to the input.
+    fit_offset = dm.fit_surface(opd_clean + 1.0e-5)
+
+    # Same discretization-noise tolerance as test_fit_surface_matches_zernike.
+    np.testing.assert_allclose(fit_clean, a, atol=1e-5)
+    np.testing.assert_allclose(fit_offset, a, atol=1e-5)
+    # The two recoveries should match each other to *machine* precision —
+    # the offset gets cleanly removed before the lstsq, so the rest is
+    # bit-identical.
+    np.testing.assert_allclose(fit_offset, fit_clean, atol=1e-12)
+
+
+def test_segmented_ptt_fit_surface_immune_to_constant_offset():
+    """A constant offset added to the input must not change the
+    recovered per-segment PTT. The existing post-fit mean removal
+    already handled this; the new pre-fit subtract is idempotent
+    with it, so behaviour is unchanged but verified.
+    """
+    from telescope_sim.pipeline import TelescopeSim
+
+    sim = TelescopeSim.from_preset("elf_15seg")
+    seg = sim.correctors["segments"]
+
+    rng = np.random.default_rng(11)
+    n_seg = seg._n_segments
+    piston_caller = rng.normal(scale=0.1, size=n_seg)
+
+    opd_clean = np.zeros(sim._c.pupil_grid.size, dtype=np.float64)
+    for i, sp in enumerate(seg._segment_pixel_data):
+        opd_clean[sp["inds"]] = 2.0 * piston_caller[i] * seg.piston_scale
+
+    fit_clean = seg.fit_surface(opd_clean)
+    fit_offset = seg.fit_surface(opd_clean + 1.0e-5)
+
+    expected = piston_caller - piston_caller.mean()
+    np.testing.assert_allclose(fit_clean[:, 0], expected, atol=1e-10)
+    np.testing.assert_allclose(fit_offset[:, 0], expected, atol=1e-10)
+    np.testing.assert_allclose(fit_offset, fit_clean, atol=1e-12)

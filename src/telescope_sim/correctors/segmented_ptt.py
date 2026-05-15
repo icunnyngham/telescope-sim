@@ -108,8 +108,12 @@ class SegmentedPTTCorrector(Corrector):
         in meters; for each segment, fits ``OPD ≈ p + t_x*x + t_y*y``
         over the segment's pixels. Returns matching caller-facing PTT —
         an ``(n_segments, 3)`` array divided by ``piston_scale`` /
-        ``tip_tilt_scale`` and by 2 (surface→OPD round-trip). Global
-        mean piston removed (doesn't affect PSF).
+        ``tip_tilt_scale`` and by 2 (surface→OPD round-trip).
+
+        The aperture-masked mean of the input is subtracted before the
+        per-segment lstsq (idempotent with the post-fit per-segment
+        mean-piston subtraction below, but keeps the convention uniform
+        with ``ZernikeCorrector.fit_surface``).
         """
         if not hasattr(self, "_segment_pixel_data"):
             raise RuntimeError(
@@ -117,8 +121,14 @@ class SegmentedPTTCorrector(Corrector):
                 "call _bind_pupil_grid() first."
             )
 
-        fits = np.zeros((self._n_segments, 3))
         phase_arr = np.asarray(phase, dtype=float)
+        # Pre-fit aperture-mean subtraction. Take the mean over the
+        # union of all segments' pixels (segment masks are already
+        # disjoint and aperture-cropped per _bind_pupil_grid).
+        union_inds = np.concatenate([sp["inds"] for sp in self._segment_pixel_data])
+        phase_arr = phase_arr - phase_arr[union_inds].mean()
+
+        fits = np.zeros((self._n_segments, 3))
         for i, sp in enumerate(self._segment_pixel_data):
             inds, off, xs, ys = sp["inds"], sp["off"], sp["xs"], sp["ys"]
             A = np.vstack([off, xs, ys]).T  # (n_pix, 3)
@@ -126,7 +136,9 @@ class SegmentedPTTCorrector(Corrector):
             x, _, _, _ = np.linalg.lstsq(A, rhs, rcond=None)
             fits[i] = x
 
-        # Remove global mean piston (constant offset does not affect PSF)
+        # Remove residual mean piston across segments (a constant
+        # offset is unobservable). Post-step kept for robustness;
+        # with the new pre-subtract this is mostly a no-op.
         fits[:, 0] -= fits[:, 0].mean()
         # Scale back to caller-facing units. The canonical implementation
         # samples atmosphere at 1 um and divides phase by 2π, then scales by

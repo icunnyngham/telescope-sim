@@ -125,10 +125,19 @@ class ZernikeCorrector(Corrector):
         The ``/ 2.0`` is the surface→OPD round-trip factor: setting
         actuator value ``v`` produces surface ``v * actuate_scale``
         but contributes ``2 * v * actuate_scale`` to the OPD.
+
+        Defensive: the aperture-masked mean of the input is subtracted
+        before the lstsq. Uniform OPD offsets are unobservable in the
+        PSF, but a non-zero-mean input (atmosphere phase screen,
+        fit-source corrector surface, etc.) would otherwise be
+        absorbed into non-piston modes, distorting them and polluting
+        any ML target derived from the fit.
         """
         if self._basis_matrix is None or self._aperture_mask is None:
             raise RuntimeError("fit_surface() before _bind_pupil_grid()")
         phase = np.asarray(phase, dtype=float).ravel()
+        # Subtract aperture-masked mean before lstsq (see docstring).
+        phase = phase - phase[self._aperture_mask].mean()
         # Solve B[mask] @ amps = phase[mask] in the least-squares sense.
         # Matches legacy `_aprox_via_dm`: lstsq on aperture-masked pixels.
         # This is exact when the basis is linearly independent over the

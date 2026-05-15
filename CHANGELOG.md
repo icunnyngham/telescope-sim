@@ -6,6 +6,33 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a4] - 2026-05-14
+
+### Fixed
+- `Corrector.fit_surface` now subtracts the aperture-masked mean of
+  the input OPD before the lstsq fit (`ZernikeCorrector`,
+  `SegmentedPTTCorrector`). Defensive against non-zero-mean inputs —
+  atmosphere phase screens and fit-source corrector surfaces can both
+  carry a mean offset, which previously got absorbed into non-piston
+  basis modes and distorted them. Uniform offsets are unobservable
+  in Fraunhofer PSFs, so this is the correct semantic. Idempotent
+  with the existing post-fit per-segment mean removal in
+  `SegmentedPTTCorrector`.
+- New tests `test_zernike_fit_surface_immune_to_constant_offset` and
+  `test_segmented_ptt_fit_surface_immune_to_constant_offset` verify
+  that adding a large constant to the input doesn't change recovered
+  actuator amplitudes.
+
+### Changed
+- Tolerances on the existing `test_residual_fit.py` actuator-level
+  assertions relaxed from `atol=1e-10` to `atol=1e-5`. The pre-fit
+  mean subtract introduces a rank-1 perturbation in the lstsq
+  solution (Zernike modes `Z_2..Z_n` aren't exactly zero-mean over
+  the *discrete* aperture, so subtracting the input mean shifts the
+  recovered coefficients by ~1e-6). PSF-level assertions retain
+  their existing tolerance (phase noise at this scale produces
+  intensity noise ~1e-12, well below the PSF tolerance).
+
 ## [2.0.0a3] - 2026-05-13
 
 ### Added

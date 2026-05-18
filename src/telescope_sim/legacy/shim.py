@@ -217,6 +217,7 @@ def _build_v2_config(cfg: dict[str, Any]) -> dict[str, Any]:
                 "post_processing": [{"type": "max_intensity_norm"}],
             }
         },
+        "strehl_method": "peak",
         "strehl_core_rad": None,
     }
     return config

@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "fixture_id": "16_strehl_zernike",
+  "rng_seed": 42,
+  "captured_at": "2026-05-18T01:36:40+00:00",
+  "platform": {
+    "python": "3.11.15",
+    "numpy": "2.4.3",
+    "system": "Darwin",
+    "hcipy": "0.7.0"
+  },
+  "outputs": {
+    "strehls_peak": {
+      "shape": [
+        8,
+        1
+      ],
+      "dtype": "float64",
+      "stats": {
+        "mean": 0.6996193665858073,
+        "std": 0.3582261856656292,
+        "min": 0.044780344541604206,
+        "max": 1.0,
+        "sum": 5.596954932686458
+      },
+      "samples": {
+        "n": 8,
+        "seed": 0,
+        "indices_hash": "fece8d601cd4c902",
+        "values": [
+          0.8675066037592848,
+          0.6584546645175731,
+          0.9794264573228173,
+          0.8983373114295541,
+          0.9794754618005064,
+          1.0,
+          0.1689740893151185,
+          0.044780344541604206
+        ]
+      }
+    },
+    "strehls_matched_filter": {
+      "shape": [
+        8,
+        1
+      ],
+      "dtype": "float64",
+      "stats": {
+        "mean": 0.8152524825642402,
+        "std": 0.2147166180035054,
+        "min": 0.4088143916586934,
+        "max": 1.0,
+        "sum": 6.522019860513922
+      },
+      "samples": {
+        "n": 8,
+        "seed": 0,
+        "indices_hash": "fece8d601cd4c902",
+        "values": [
+          0.8998741018621194,
+          0.7909479997789434,
+          0.9907354537168334,
+          0.9231278036626561,
+          0.9907755983537843,
+          1.0,
+          0.5177445114808922,
+          0.4088143916586934
+        ]
+      }
+    }
+  },
+  "extra": {
+    "layout": "3 segments on ring R=0.5m, seg_diameter=0.4m",
+    "pupil_res": 128,
+    "focal_res": 64,
+    "focal_extent_arcsec": 1.0,
+    "central_lam": 1e-06,
+    "piston_scale": 1e-06,
+    "tip_tilt_scale": 1e-06,
+    "core_radius_rad": 7.499999999999999e-06,
+    "actuation_case_labels": [
+      "at_rest",
+      "global_tip_small",
+      "global_tip_large",
+      "global_tilt_small",
+      "differential_piston",
+      "seg0_combined",
+      "per_segment_tip",
+      "global_piston_large"
+    ],
+    "notes": "Sequence of 8 PTT actuations captured through the canonical MultiAperturePSFSampler._strehl. Two sampler instances cover the legacy peak (strehl_core_rad=None) and matched_filter (strehl_core_rad=3*lam/D) modes."
+  }
+}

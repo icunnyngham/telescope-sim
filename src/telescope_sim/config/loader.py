@@ -42,6 +42,7 @@ from telescope_sim.pipeline import (
     _PipelineComponents,
 )
 from telescope_sim.registry import lookup
+from telescope_sim.strehl import StrehlEstimator, build_strehl_estimator
 
 
 def _instantiate(kind: str, cfg: StageConfig | dict | str, **extras: Any) -> Any:
@@ -62,7 +63,7 @@ def load_yaml(path: str | Path) -> SimConfig:
     return SimConfig.model_validate(data)
 
 
-def build(config: SimConfig) -> TelescopeSim:
+def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-driven assembly: per-stage branches)
     """Instantiate a TelescopeSim from a validated config."""
     # 1) Pupil grid
     pupil_grid = hcipy.make_pupil_grid(config.pupil.resolution, config.pupil.extent)
@@ -131,6 +132,7 @@ def build(config: SimConfig) -> TelescopeSim:
     #    set_actuators() yet. Reference PSFs are computed without the
     #    coronagraph (matches legacy convention).
     focal_planes: dict[str, FocalPlane] = {}
+    strehl_estimators: dict[str, StrehlEstimator] = {}
     for fp_name, fp_cfg in config.focal_planes.items():
         payload = fp_cfg.model_dump()
         type_name = payload.pop("type")
@@ -141,6 +143,16 @@ def build(config: SimConfig) -> TelescopeSim:
             c.flatten()
         fp.compute_reference_psf(corrector_chain)
         focal_planes[fp_name] = fp
+        # Build the Strehl estimator now that the at-rest reference PSF
+        # exists. argmax/mask/weighted sums are cached here so the
+        # per-sample path stays cheap (mirrors legacy lam_setup cache).
+        if fp.reference_psf is not None:
+            strehl_estimators[fp_name] = build_strehl_estimator(
+                method=config.strehl_method,
+                reference_psf=fp.reference_psf,
+                focal_grid=fp.lam_setup.focal_grid,
+                core_radius_rad=config.strehl_core_rad,
+            )
 
     # 5) Outputs (tap + ordered post-processors)
     outputs: list[_OutputSpec] = []
@@ -175,7 +187,7 @@ def build(config: SimConfig) -> TelescopeSim:
         correctors=corrector_chain,
         focal_planes=focal_planes,
         outputs=outputs,
-        strehl_core_rad=config.strehl_core_rad,
+        strehl_estimators=strehl_estimators,
         coronagraph=coronagraph,
     )
     return TelescopeSim.from_components(components)

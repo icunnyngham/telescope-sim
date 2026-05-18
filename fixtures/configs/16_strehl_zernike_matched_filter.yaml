@@ -1,0 +1,50 @@
+# Strehl-parity fixture #16 — matched-filter v2 config.
+#
+# Identical optical setup to 16_strehl_zernike.yaml; only the strehl
+# method and core radius differ. core_radius_rad = 3 * (lam/D) where
+# D is the segment diameter (this is the canonical-family "core" sizing
+# convention from the legacy strehl docstring).
+#   3 * (1.0e-6 / 0.4) = 7.5e-6 rad
+
+pupil:
+  resolution: 128
+  extent: 1.4
+
+aperture:
+  type: segmented_circular
+  segment_diameter: 0.4
+  layout: elf
+  n_segments: 3
+  ring_radius: 0.5
+  supersample: 16
+
+correctors:
+  segments:
+    type: segmented_ptt
+    piston_scale: 1.0e-6
+    tip_tilt_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [segments]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 1.0
+    focal_res: 64
+    fractional_bandwidth: 0.0
+    num_samples: 1
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing:
+      - type: max_intensity_norm
+
+strehl_method: matched_filter
+strehl_core_rad: 7.5e-6

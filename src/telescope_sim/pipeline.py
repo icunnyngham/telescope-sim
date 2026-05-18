@@ -24,7 +24,7 @@ from telescope_sim.abc import (
     PipelineContext,
     PostProcessor,
 )
-from telescope_sim.strehl import core_integral_strehl, peak_pixel_strehl
+from telescope_sim.strehl import StrehlEstimator
 
 
 def _mirror_of(corrector: Any) -> Any | None:
@@ -59,7 +59,7 @@ class _PipelineComponents:
     correctors: list[Corrector]
     focal_planes: dict[str, FocalPlane]
     outputs: list[_OutputSpec]
-    strehl_core_rad: float | None = None
+    strehl_estimators: dict[str, StrehlEstimator] = field(default_factory=dict)
     coronagraph: Coronagraph | None = None
 
 
@@ -272,23 +272,17 @@ class TelescopeSim:
             "actuations": actuator_echo,
         }
 
-        # 6) Strehl.
+        # 6) Strehl. Estimators were built once at construction with the
+        #    reference-PSF argmax / core mask / weighted sums cached, so
+        #    this loop is O(1) (peak) or O(core_pixels) (matched_filter)
+        #    per focal plane — same as the legacy `_strehl` call site.
         if meas_strehl:
             strehls: dict[str, float] = {}
-            for name, fp in self._c.focal_planes.items():
-                ref_peak = fp.reference_peak_intensity
-                if ref_peak is None:
+            for name in self._c.focal_planes:
+                est = self._c.strehl_estimators.get(name)
+                if est is None:
                     continue
-                psf_arr = fp_results[name].intensity
-                if self._c.strehl_core_rad is None:
-                    strehls[name] = peak_pixel_strehl(psf_arr, ref_peak)
-                else:
-                    strehls[name] = core_integral_strehl(
-                        psf_arr,
-                        fp.reference_psf,
-                        fp.lam_setup.focal_grid,
-                        self._c.strehl_core_rad,
-                    )
+                strehls[name] = est.compute(fp_results[name].intensity)
             result["strehls"] = strehls
 
         return result

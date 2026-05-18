@@ -34,6 +34,9 @@ CANONICAL_FIXTURES = [
     pytest.param("15_fiber_mmf", marks=pytest.mark.fiber),
 ]
 
+# Fixture #16 is shaped differently (Strehl arrays over an actuation
+# sequence, no single-sample x/y) so it has its own runner + test below.
+
 
 @pytest.fixture(scope="module")
 def telescope_sim_module():
@@ -68,6 +71,30 @@ def test_canonical_v2_reproduces_digest(fixture_id: str, telescope_sim_module) -
     }
     if "strehls" in expected_outputs and out.get("strehls"):
         actual["strehls"] = np.array(list(out["strehls"].values()))
+
+    results = compare_digest(actual, recorded)
+    assert all_ok(results), "\n".join(str(r) for r in results)
+
+
+@pytest.mark.slow
+@pytest.mark.fixture
+def test_strehl_zernike_v2_reproduces_digest(telescope_sim_module) -> None:  # noqa: ARG001
+    """Fixture #16: v2 reproduces both Strehl modes on an 8-case actuation sweep.
+
+    Pins the v2 ``StrehlEstimator`` formulas against the legacy
+    ``_strehl`` formulas captured in
+    ``fixtures/runner/digests/16_strehl_zernike/expected.json``.
+    """
+    fixture_id = "16_strehl_zernike"
+    digest_path = REPO_ROOT / "fixtures/runner/digests" / fixture_id / "expected.json"
+    assert digest_path.is_file(), f"missing digest at {digest_path}"
+
+    # Lazy import: the runner script is in fixtures/runner/, which is on
+    # sys.path from the module top.
+    from run_v2_16_strehl_zernike import reproduce  # noqa: PLC0415
+
+    recorded = read_digest(digest_path)
+    actual = reproduce()
 
     results = compare_digest(actual, recorded)
     assert all_ok(results), "\n".join(str(r) for r in results)

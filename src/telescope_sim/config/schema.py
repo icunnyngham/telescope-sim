@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StageConfig(BaseModel):
@@ -72,7 +72,23 @@ class SimConfig(BaseModel):
     coronagraph: StageConfig | None = None
     focal_planes: dict[str, StageConfig]
     outputs: dict[str, OutputConfig]
+    strehl_method: Literal["peak", "matched_filter"] | None = None
     strehl_core_rad: float | None = None
+
+    @model_validator(mode="after")
+    def _resolve_strehl(self) -> SimConfig:
+        # Back-compat: if the user set strehl_core_rad but not strehl_method,
+        # promote to matched_filter (the old "core_rad is not None" branch).
+        # Otherwise default to peak.
+        if self.strehl_method is None:
+            self.strehl_method = "matched_filter" if self.strehl_core_rad is not None else "peak"
+        if self.strehl_method == "matched_filter" and (
+            self.strehl_core_rad is None or self.strehl_core_rad <= 0
+        ):
+            raise ValueError(
+                "strehl_method='matched_filter' requires a positive strehl_core_rad"
+            )
+        return self
 
 
 __all__ = [

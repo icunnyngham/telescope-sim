@@ -1,0 +1,52 @@
+# Strehl-parity fixture #16 — peak-mode v2 config.
+#
+# Three-segment circular aperture on a ring at R=0.5m. Tiny by canonical-
+# fixture standards (pupil_res=128, focal_res=64) because the strehl
+# regression is captured over a *sequence* of 8 actuations: we want fast
+# per-sample turnaround. Matches the layout in
+# fixtures/runner/run_legacy_16_strehl_zernike.py exactly.
+#
+# A sibling YAML (16_strehl_zernike_matched_filter.yaml) carries the
+# matched-filter variant.
+
+pupil:
+  resolution: 128
+  extent: 1.4
+
+aperture:
+  type: segmented_circular
+  segment_diameter: 0.4
+  layout: elf
+  n_segments: 3
+  ring_radius: 0.5
+  supersample: 16
+
+correctors:
+  segments:
+    type: segmented_ptt
+    piston_scale: 1.0e-6
+    tip_tilt_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [segments]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 1.0
+    focal_res: 64
+    fractional_bandwidth: 0.0
+    num_samples: 1
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing:
+      - type: max_intensity_norm
+
+strehl_method: peak

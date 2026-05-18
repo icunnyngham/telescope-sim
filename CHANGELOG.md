@@ -6,6 +6,51 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a5] - 2026-05-17
+
+### Fixed
+- Strehl estimators now reproduce the canonical
+  `TelescopeSim/telescope_sim/multi_aperture_psf.py:_strehl` formulas
+  bit-for-bit. Two real bugs were latent in the previous functions:
+  - **Peak mode** used `np.max(psf) / reference_peak` instead of the
+    legacy `psf.flat[reference_argmax] / reference_peak`. A PSF moved
+    off the reference position by tip-tilt has the same `np.max`, so
+    the previous implementation reported Strehl ~1.0 for tilts that
+    should have read substantially lower. Fixture #16 shows a 0.5 µm
+    global tip on a 3-segment aperture now correctly reads 0.658
+    instead of ~1.0.
+  - **Core mode** computed a flat sum-of-energy ratio
+    `Σ(psf[core]) / Σ(ref[core])`. The legacy formula is a matched-
+    filter projection `Σ(psf[core] · ref[core]) / Σ(ref[core]²)` —
+    pixels are upweighted by the reference brightness, not treated
+    equally. The mask center also moved from `argmax(reference_psf)`
+    back to the focal-grid origin to match legacy.
+- All reference-PSF-derived quantities (argmax, core mask, weighted
+  sums) are precomputed once at construction in cached
+  `_PeakStrehl` / `_MatchedFilterStrehl` estimator objects, so the
+  per-sample work stays O(1) for peak and O(core_pixels) for
+  matched-filter — mirroring the legacy `lam_setup` cache and
+  avoiding a regression on RL rollouts that query Strehl every step.
+
+### Added
+- Legacy-environment fixture `16_strehl_zernike`. Captures both Strehl
+  modes through the canonical `MultiAperturePSFSampler._strehl` over an
+  8-case PTT actuation sequence (tip, tilt, piston, differential
+  piston, combined). Pinned in
+  `fixtures/runner/digests/16_strehl_zernike/expected.json` and
+  reproduced by `tests/fixtures/test_canonical.py::test_strehl_zernike_v2_reproduces_digest`.
+- Twelve new unit tests in `tests/unit/test_strehl_parity.py`
+  (toy-PSF, no HCIPy) that hand-verify each formula and the schema's
+  backwards-compat behavior.
+
+### Changed
+- New `strehl_method: "peak" | "matched_filter"` config field on
+  `SimConfig`. Explicit selection replaces the implicit
+  "is `strehl_core_rad` None?" branch in the pipeline.
+- A pydantic `@model_validator` auto-promotes legacy YAMLs that set
+  `strehl_core_rad` without `strehl_method` to `matched_filter`, and
+  rejects `matched_filter` without a positive `strehl_core_rad`.
+
 ## [2.0.0a4] - 2026-05-14
 
 ### Fixed

@@ -100,9 +100,7 @@ def build_strehl_estimator(
         )
     if method == "matched_filter":
         if core_radius_rad is None or core_radius_rad <= 0:
-            raise ValueError(
-                "strehl_method='matched_filter' requires a positive strehl_core_rad"
-            )
+            raise ValueError("strehl_method='matched_filter' requires a positive strehl_core_rad")
         x = np.asarray(focal_grid.x)
         y = np.asarray(focal_grid.y)
         mask = (np.sqrt(x**2 + y**2) < float(core_radius_rad)).astype(np.bool_)
@@ -112,9 +110,7 @@ def build_strehl_estimator(
             ref_core_vals=ref_core,
             ref_core_sq_sum=float((ref_core**2).sum()),
         )
-    raise ValueError(
-        f"unknown strehl_method {method!r}; expected 'peak' or 'matched_filter'"
-    )
+    raise ValueError(f"unknown strehl_method {method!r}; expected 'peak' or 'matched_filter'")
 
 
 __all__ = [

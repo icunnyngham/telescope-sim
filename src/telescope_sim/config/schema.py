@@ -85,9 +85,7 @@ class SimConfig(BaseModel):
         if self.strehl_method == "matched_filter" and (
             self.strehl_core_rad is None or self.strehl_core_rad <= 0
         ):
-            raise ValueError(
-                "strehl_method='matched_filter' requires a positive strehl_core_rad"
-            )
+            raise ValueError("strehl_method='matched_filter' requires a positive strehl_core_rad")
         return self
 
 

@@ -84,18 +84,14 @@ def test_peak_zero_reference_returns_zero():
 
 def test_matched_filter_at_rest_returns_one():
     ref, grid = _gaussian_ref()
-    est = build_strehl_estimator(
-        "matched_filter", ref, focal_grid=grid, core_radius_rad=5.0
-    )
+    est = build_strehl_estimator("matched_filter", ref, focal_grid=grid, core_radius_rad=5.0)
     assert est.compute(ref) == pytest.approx(1.0)
 
 
 def test_matched_filter_linear_in_psf_amplitude():
     """Matched filter is linear in psf: scaling psf by k scales Strehl by k."""
     ref, grid = _gaussian_ref()
-    est = build_strehl_estimator(
-        "matched_filter", ref, focal_grid=grid, core_radius_rad=5.0
-    )
+    est = build_strehl_estimator("matched_filter", ref, focal_grid=grid, core_radius_rad=5.0)
     assert est.compute(0.5 * ref) == pytest.approx(0.5)
 
 
@@ -109,9 +105,7 @@ def test_matched_filter_formula_matches_legacy_by_hand():
     rng = np.random.default_rng(0)
     psf = ref + 0.05 * rng.standard_normal(ref.shape)  # noisy variant
     r = 5.0
-    est = build_strehl_estimator(
-        "matched_filter", ref, focal_grid=grid, core_radius_rad=r
-    )
+    est = build_strehl_estimator("matched_filter", ref, focal_grid=grid, core_radius_rad=r)
     # Hand recompute the legacy formula directly:
     mask = np.sqrt(grid.x**2 + grid.y**2) < r
     ref_core = ref.ravel()[mask]
@@ -131,9 +125,7 @@ def test_matched_filter_mask_is_origin_centered_not_argmax():
     ref = np.zeros((n, n), dtype=np.float64)
     ref[n // 2 + 5, n // 2 + 5] = 1.0  # argmax is off-center
     _, grid = _gaussian_ref(n=n)
-    est = build_strehl_estimator(
-        "matched_filter", ref, focal_grid=grid, core_radius_rad=2.5
-    )
+    est = build_strehl_estimator("matched_filter", ref, focal_grid=grid, core_radius_rad=2.5)
     # The argmax pixel sits at (5,5) from origin → outside r=2.5 mask.
     # So ref_core_vals must be all zero → the cached ref_core_sq_sum is 0
     # and the estimator short-circuits to 0.0.

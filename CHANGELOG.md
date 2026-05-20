@@ -24,6 +24,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_angular_focal_plane_parity.py`: pins
+  `AngularFocalPlane` against the canonical legacy construction at
+  `TelescopeSim/telescope_sim/multi_aperture_psf.py:249-276`. Nine
+  assertions: arcsec→radians via `* np.pi / (180 * 3600)`, focal grid
+  via `hcipy.make_uniform_grid` (NOT `make_pupil_grid`), propagator
+  built WITHOUT focal_length (vs PhysicalFocalPlane which sets it),
+  broadband formula
+  `central * linspace(1 - h/2, 1 + h/2, N)`, num_samples=1
+  shortcut, no `total_power=1` override (vs PhysicalFocalPlane's
+  configurable normalization), per-wavelength chain loop matches the
+  legacy `_psf` body bit-for-bit, reference-PSF peak+sum caching, and
+  unbuilt-state error. No bugs surfaced.
 - `tests/unit/test_physical_focal_plane_parity.py`: pins
   `PhysicalFocalPlane` against the legacy fiber variant
   (`variants/fiber_rms__multi_aperture_psf.py:267-269, 290`). Nine

@@ -24,6 +24,11 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_identity_coronagraph_parity.py`: pins
+  `IdentityCoronagraph` as a true passthrough. Four assertions:
+  `apply(wf) is wf` (identity, not just equality), aberrated input
+  preserved bit-for-bit, `_bind_pupil_grid` is a no-op and idempotent,
+  constructor swallows extra kwargs (loader-friendly). No bugs surfaced.
 - `tests/unit/test_intensity_output_tap_parity.py`: pins
   `IntensityOutputTap` against the canonical legacy stacking pattern
   (`TelescopeSim/.../multi_aperture_psf.py:520-523`,

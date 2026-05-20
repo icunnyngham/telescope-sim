@@ -60,7 +60,10 @@ class FiberDualOutputTap(OutputTap):
             return fiber
         raise ValueError(f"unsupported fiber type {type_name!r}")
 
-    def extract(self, fp_results: Any) -> NDArray[np.floating]:
+    def extract(
+        self, fp_results: Any, *, overrides: dict[str, Any] | None = None
+    ) -> NDArray[np.floating]:
+        del overrides  # this tap has no per-sample state
         if self._fiber is None:
             self._fiber = self._build_fiber()
         if not isinstance(fp_results, dict):

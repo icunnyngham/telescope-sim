@@ -42,12 +42,17 @@ class IntensityOutputTap(OutputTap):
         # composite source string for diagnostics.
         self.source = "focal:" + ",".join(self.focal_plane_names)
 
-    def extract(self, fp_results: Any) -> NDArray[np.floating]:
+    def extract(
+        self, fp_results: Any, *, overrides: dict[str, Any] | None = None
+    ) -> NDArray[np.floating]:
         """Extract from a dict mapping focal_plane name → FocalPlaneResult.
 
         Uses the summed-intensity field from each focal plane and stacks
         channels-last so the canonical ``(H, W, n_filters)`` layout falls out.
+        ``overrides`` is accepted for ABC compatibility and ignored — this tap
+        has no per-sample state.
         """
+        del overrides  # this tap has no per-sample state
         if not isinstance(fp_results, dict):
             raise TypeError(
                 "IntensityOutputTap.extract expects a dict of FocalPlaneResults; "

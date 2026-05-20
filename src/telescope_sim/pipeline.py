@@ -122,6 +122,7 @@ class TelescopeSim:
         self,
         actuations: Mapping[str, ArrayLike] | None = None,
         *,
+        output_overrides: Mapping[str, Mapping[str, Any]] | None = None,
         meas_strehl: bool = False,
     ) -> dict[str, Any]:
         """Run the optical chain and return a dict of outputs.
@@ -132,6 +133,11 @@ class TelescopeSim:
             Per-corrector actuator state. Keys are corrector names (matching
             those declared in the config); each value is whatever shape that
             corrector's ``set_actuators`` accepts.
+        output_overrides
+            Per-sample tap-config overrides, keyed by output name. For example,
+            ``{"psf": {"int_phot_flux": 5.0e7}}`` to vary the photon flux on a
+            noisy-intensity tap from sample to sample. Taps that have no
+            per-sample state ignore the override.
         meas_strehl
             If True, includes a ``strehls`` entry in the returned dict.
 
@@ -144,6 +150,7 @@ class TelescopeSim:
             ``strehls``      — present iff ``meas_strehl`` is True
         """
         actuations = dict(actuations or {})
+        output_overrides = dict(output_overrides or {})
 
         # 1) Apply actuator state to "actuate" and "impose" correctors.
         for c in self._c.correctors:
@@ -222,7 +229,7 @@ class TelescopeSim:
         # 4) Run output taps + per-output post-processors.
         images: dict[str, NDArray] = {}
         for out_spec in self._c.outputs:
-            arr = out_spec.tap.extract(fp_results)
+            arr = out_spec.tap.extract(fp_results, overrides=output_overrides.get(out_spec.name))
 
             # Build context for post-processors
             ref_peaks = [

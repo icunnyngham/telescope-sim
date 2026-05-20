@@ -26,6 +26,7 @@ import telescope_sim.focal_planes.angular  # noqa: F401
 import telescope_sim.focal_planes.physical  # noqa: F401
 import telescope_sim.outputs.fiber_dual  # noqa: F401
 import telescope_sim.outputs.intensity  # noqa: F401
+import telescope_sim.outputs.noisy_intensity  # noqa: F401
 import telescope_sim.post  # noqa: F401  (post-processor package imports its modules)
 from telescope_sim.abc import (
     Aperture,
@@ -165,6 +166,11 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
         # take different args, but for Phase 2 we only have intensity.
         if "focal_planes" in tap_payload:
             tap_payload["focal_plane_names"] = tap_payload.pop("focal_planes")
+        # The noisy_intensity tap takes an aperture_area; if the YAML didn't
+        # specify one, inject the value from the built aperture so users
+        # don't have to duplicate it across the config.
+        if tap_type == "noisy_intensity" and tap_payload.get("aperture_area") is None:
+            tap_payload["aperture_area"] = aperture_result.area
         tap: OutputTap = tap_cls(name=out_name, **tap_payload)
 
         # Post-processors

@@ -21,8 +21,19 @@ class OutputTap(ABC):
     source: str  # name of the intermediate wavefront to consume
 
     @abstractmethod
-    def extract(self, wf: Any) -> NDArray[np.floating]:
-        """Return a numpy array representing this tap's view of the wavefront."""
+    def extract(self, wf: Any, *, overrides: dict[str, Any] | None = None) -> NDArray[np.floating]:
+        """Return a numpy array representing this tap's view of the wavefront.
+
+        Parameters
+        ----------
+        wf
+            The tap's input — typically the ``fp_results`` dict mapping focal-
+            plane name to ``FocalPlaneResult``.
+        overrides
+            Per-sample tap-config overrides from ``sim.sample(output_overrides=...)``.
+            Most taps ignore this; taps that have per-sample state (e.g. photon
+            flux for a noisy detector) read named fields here.
+        """
         ...
 
 

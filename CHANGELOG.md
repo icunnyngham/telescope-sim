@@ -24,6 +24,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_segmented_circular_aperture_parity.py`: pins
+  `SegmentedCircularAperture` against the canonical legacy construction
+  (`TelescopeSim/.../multi_aperture_psf.py:146-166, 212-242`). Ten
+  assertions: aperture field matches legacy supersampled
+  `make_segmented_aperture` (rtol=0, atol=0), per-segment masks each
+  match the legacy fields, default supersample is 16, ELF ring centers
+  match `linspace(0, 2pi, N+1)[:-1]`, area = N · π(D/2)² and metadata
+  carries geometry, spider applies to the aperture mask but NOT to
+  segment masks (legacy convention since commit 33914ee), spider
+  `angle` in degrees → radians conversion, custom layout matches user
+  positions, and validation paths (elf without n_segments, unknown
+  layout). No bugs surfaced.
 - `tests/unit/test_angular_focal_plane_parity.py`: pins
   `AngularFocalPlane` against the canonical legacy construction at
   `TelescopeSim/telescope_sim/multi_aperture_psf.py:249-276`. Nine

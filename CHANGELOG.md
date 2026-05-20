@@ -6,6 +6,66 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a6] - 2026-05-19
+
+### Audit campaign — v2.0 → legacy parity sweep
+
+This release is a defensive audit pass. The strehl bug (commit 1c0f519,
+v2.0.0a5) and the three latent bugs from commit 33914ee (Zernike fit
+`/2` factor, SegmentedPTT block-layout actuator scramble, segment-mask
+overlap) had all shipped without crashing — caught only when regression
+tests were finally written. Every fixture before #16 captured an at-rest
+sample (all-zero actuations), and at rest most buggy code paths happen
+to evaluate correctly. This release closes that coverage gap.
+
+Fifteen components audited (14 from the inventory + a variant-side cache
+walk). Each got a parity unit test in `tests/unit/test_*_parity.py`
+that asserts behavior against either a direct HCIPy reproduction of the
+legacy one-liner OR a synthetic input where the legacy formula is
+hand-derivable. **No bugs surfaced** — every v2 wrapper / formula /
+construction matches its legacy counterpart bit-for-bit (or within
+floating-point noise at atol=1e-12 to atol=1e-30 where measured).
+
+Audit summary by tier (component → commit):
+- Tier 1 (complex math / non-canonical lineage): VortexCoronagraph
+  (`582518f`), VectorVortexCoronagraph (`78e51f3`), FiberDualOutputTap
+  (`8f99503`), ExternalPupilAperture (`a0c4a4f`), ZernikeCorrector
+  (`59b5d58`), PhysicalFocalPlane (`e187be7`).
+- Tier 2 (canonical lineage / simpler math): AngularFocalPlane
+  (`9806863`), SegmentedCircularAperture (`48456a8`), IntensityOutputTap
+  (`b9b1d3c`), IdentityCoronagraph (`ce447d4`).
+- Tier 3 (post-processors): MaxIntensityNorm, PerSampleNorm,
+  MaxImageNorm, ChannelsFirst bundled (`577408a`). Closes the only
+  C-bucket (zero-coverage) component (ChannelsFirst).
+- Tier 4 (cache audit): variant-side `self.*` walk (`7c2f01a`).
+
+Net: 14 of 15 inventoried v2 components moved from B-bucket
+(at-rest fixture only) to A-bucket (formula-asserted). The fifteenth
+(SegmentedPTTCorrector) was already A-bucket via
+`tests/unit/test_residual_fit.py`.
+
+Feature gaps catalogued during the audit (legacy features not yet
+ported, all deferred — not blocking current fixture coverage):
+- `NoisyDetector` per-filter + `int_phot_flux` photon-flux scaling
+  (canonical `multi_aperture_psf.py:260-266, 463-505`)
+- HCIPy atmosphere wiring — pipeline.py:80 has a placeholder; legacy
+  `sample()` accepts an `atmos` arg
+- Xinetics DM corrector (`make_xinetics_influence_functions` +
+  lstsq actuator selection) used by ELF/minielf
+- `aprox_ptt_with_dm` PTT→DM fitting (depends on Xinetics)
+- Lyot and `perfect` coronagraphs — VVC + Identity are present, Lyot
+  exists in legacy `variants/vampires_lyot_*` but not in v2
+- `convolve_im` (extended-source PSF convolution), `include_fft` (FFT
+  channels), `pow_scale` (dynamic-range compression), `gauss_noise`
+  (post-norm Gaussian noise) — all from legacy `extra_processing`
+
+NOT a gap: legacy auto-derives the Zernike basis diameter from
+aperture geometry; v2 makes it a YAML field. Equivalent semantics,
+moved from runtime derivation to config.
+
+### Added
+See per-commit entries below.
+
 ### Audit notes (no code changes)
 
 - **Variant-side cache audit** (audit campaign #15): walked the

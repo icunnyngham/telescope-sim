@@ -16,6 +16,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   supersample override, and unbound `apply()` raising. The wrapper has
   no math of its own — these are structural-faithfulness tests. No bugs
   surfaced.
+- `tests/unit/test_vector_vortex_coronagraph_parity.py`: pins
+  `VectorVortexCoronagraphImpl` against direct
+  `hcipy.VectorVortexCoronagraph` calls. Legacy reference uses charge=4
+  (all three active variants: vampires_vvc / scexao_vvc /
+  fp_rl_ff_vvc). Four assertions: pupil-plane field parity (atol=1e-14),
+  focal intensity parity (rtol=1e-12), charge-pass-through with both
+  charge=2 and charge=4 (incl. default check), unbound `apply()`
+  raising. No bugs surfaced.
 
 ## [2.0.0a5] - 2026-05-17
 

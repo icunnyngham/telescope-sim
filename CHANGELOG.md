@@ -6,6 +6,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Audit notes (no code changes)
+
+- **Variant-side cache audit** (audit campaign #15): walked the
+  per-init `self.*` attributes in `variants/coro__coro_mas_psf.py` and
+  `variants/fiber_rms__multi_aperture_psf.py` (the two highest-
+  divergence variants) and confirmed each cached quantity has an
+  equivalent in v2. Items checked:
+  - `pupil_grid`, `aper`, `segments`, `sm`, `aper_area` → all built
+    once in the v2 loader (aperture + focal plane construction).
+  - `dm_basis`, `dm`, `actuate_scale` → cached in
+    `ZernikeCorrector._bind_pupil_grid` and `SegmentedPTTCorrector`.
+  - `lyot_mask` → built once in the coronagraph `_bind_pupil_grid`
+    via `_resolve_lyot_field`.
+  - `lam_setups[i]` (per-filter HCIPy artefacts: focal grid,
+    propagator, wavefronts, filter_lams, reference PSF stats) → all
+    cached in `_LamSetup` dataclasses inside both
+    `AngularFocalPlane` and `PhysicalFocalPlane`.
+  - `seg_coords` (per-segment pixel `inds`, centered `xs`/`ys`,
+    `offset`) → cached as `_segment_pixel_data` in
+    `SegmentedPTTCorrector` (lines 204-211).
+  - `multi_mode_fiber` → built lazily and cached by
+    `FiberDualOutputTap` on first `extract()`.
+  Only items NOT cached in v2 are tied to as-yet-unported features
+  (DM influence matrix, `dm_act_selection` mask, `aprox_ptt_with_dm`,
+  `NoisyDetector`) — those are tracked as feature gaps, not cache gaps.
+  One config-style change worth noting: legacy auto-derives the
+  Zernike basis diameter from the aperture geometry
+  (`self.diameter = 1.01 * max-pairwise(outer-5%-pixels)`); v2 expects
+  it as the YAML's `zernike_diameter` field. Equivalent semantics,
+  just moved from runtime derivation to user-supplied config.
+
 ### Added (audit campaign — v2.0 → legacy parity sweep)
 
 - `tests/unit/test_vortex_coronagraph_parity.py`: pins

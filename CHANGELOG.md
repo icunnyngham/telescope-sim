@@ -6,6 +6,93 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a7] - 2026-05-19
+
+### Added
+
+- `NoisyIntensityOutputTap` (`output_tap` kind: `noisy_intensity`) —
+  closes the long-standing `NoisyDetector` feature gap catalogued in
+  v2.0.0a6's audit. Wraps `hcipy.NoisyDetector` and integrates the
+  wavelength-summed PSF in a single `integrate(power_field, dt=1)` call.
+  The legacy `_addNoiseToObservation` (in
+  `multi_aperture_psf.py:548-585`) reconstructed a fake Wavefront from
+  `sqrt(intensity)` before integrating — unnecessary, since HCIPy's
+  `Detector.integrate()` accepts a `hcipy.Field` directly. Same
+  single-exposure semantic, ~20 lines lighter, no fake-Wavefront
+  overhead.
+  Config:
+  ```yaml
+  outputs:
+    psf:
+      tap:
+        type: noisy_intensity
+        focal_planes: [filter1]
+        int_phot_flux: 1.0e8         # default; can be overridden per-sample
+        aperture_area: null           # null → loader injects from aperture
+        clamp_nonnegative: true       # legacy np.abs() workaround
+        detector:
+          read_noise: 5.0
+          dark_current_rate: 1.0
+          flat_field: 0.0
+          include_photon_noise: true
+  ```
+- Per-sample tap-config overrides on `sim.sample()`:
+  ```python
+  sim.sample(
+      actuations={"segments": ptt},
+      output_overrides={"psf": {"int_phot_flux": 5.0e7}},
+      meas_strehl=True,
+  )
+  ```
+  The `output_overrides` dict is keyed by output name; the value's keys
+  override the corresponding tap-constructor fields for that sample
+  only. `IntensityOutputTap` and `FiberDualOutputTap` accept the kwarg
+  and ignore it (they have no per-sample state).
+- `OutputTap.extract()` ABC now takes `*, overrides=None`. Existing
+  taps updated to accept-and-ignore. No functional change for callers
+  using the previous signature.
+- Eager detector binding via `_bind_focal_grid()` hook on
+  `NoisyIntensityOutputTap`. The loader calls this after building each
+  focal plane so the underlying `hcipy.NoisyDetector` (and the
+  `np.random.normal(...)` call in its flat-field setter) construct at
+  sim-build time — not lazily on first sample. This makes seeded-RNG
+  outputs deterministic and matches legacy behavior, which built the
+  detector during sampler `__init__`.
+
+### Tests
+
+- `tests/unit/test_noisy_intensity_output_tap_parity.py` — 17 tests
+  organized in four layers for the stochastic component:
+  - Structural (RNG-free): shape, kwarg honoring, per-sample override
+    beats YAML default, wavefronts not mutated, detector built once,
+    clamp_nonnegative flag.
+  - Noise-off identity: every noise source zeroed → exact equality
+    with the manually-constructed `power_field * dt = flux*area`
+    expectation. Decouples wiring from RNG.
+  - Statistical (seeded, N=96): read-only → `std ≈ read_noise` and
+    mean unchanged; dark-only → `mean += rate*dt` exactly;
+    photon-only → `var ≈ mean` (Poisson) on bright pixels.
+  - Determinism: same `np.random.seed` → bit-for-bit identical
+    outputs; different seeds diverge.
+- Legacy-parity fixture #17 (`17_noisy_psf`): three configurations
+  (at-rest + two photon fluxes, plus a tip-tilt + flux case) captured
+  under `np.random.seed(42)`. Both clean and noisy outputs match the
+  legacy `_addNoiseToObservation` reference bit-for-bit. Wired into
+  `tests/fixtures/test_canonical.py::test_noisy_psf_v2_reproduces_digest`
+  with `@pytest.mark.slow`.
+
+### Feature gaps (CLAUDE.md update)
+
+Removed from the local CLAUDE.md feature-gap table:
+- `NoisyDetector per-filter` — addressed by `noisy_intensity` tap.
+- `int_phot_flux` photon-flux scaling — addressed by the per-sample
+  override mechanism.
+
+Remaining deferred gaps (unchanged from v2.0.0a6): `convolve_im`,
+`include_fft`, `pow_scale`, `gauss_noise`, `aprox_ptt_with_dm`,
+Xinetics DM corrector, HCIPy atmosphere wiring, Lyot/perfect
+coronagraphs.
+
 ## [2.0.0a6] - 2026-05-19
 
 ### Audit campaign — v2.0 → legacy parity sweep

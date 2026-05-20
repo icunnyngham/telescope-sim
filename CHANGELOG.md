@@ -6,6 +6,65 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a8] - 2026-05-19
+
+### Added
+
+- `sim.sample(atmos=...)` — per-sample atmosphere kwarg, externally
+  managed (matches legacy semantics; the caller owns the atmosphere
+  object and time evolution, v2 holds no atmosphere state). Accepts any
+  callable `Wavefront → Wavefront`; the canonical case is an HCIPy
+  `InfiniteAtmosphericLayer` or `MultiLayerAtmosphere`.
+
+  Chain ordering: atmosphere → corrector chain → (coronagraph?) → focal
+  propagator. The reference PSF is built once at sim-build with no
+  atmosphere — by construction it cannot be polluted by per-sample
+  atmospheric phase.
+
+- Fit-role coupling: when `atmos` exposes `.phase_for(lam)` (HCIPy
+  convention: phase = 2π·OPD/λ), the pipeline seeds `running_opd` with
+  the atmospheric OPD at the top of step 2's chain walk. Fit-role
+  correctors using `fit_source="cumulative_phase_pre_self"` then
+  naturally project the atmosphere into their actuator basis. The
+  legacy's separate `_measure_atmos_ptt` / `_aprox_via_dm` paths
+  (`multi_aperture_psf.py:375-389, 397-409`) are unnecessary in v2 —
+  the cumulative-OPD + fit-role machinery from commit 33914ee covers
+  the entire atmosphere-residual workflow.
+
+  Without `.phase_for` (e.g., a plain `wf → wf` test callable), the
+  wavefront is still modified but fit-role correctors see
+  `cum_opd_pre = 0`. Documented in the `sample()` docstring as the
+  contract.
+
+### Removed
+
+- `src/telescope_sim/atmosphere.py` — the never-implemented stub with
+  `evolve_until` / YAML-declared time evolution. The legacy pattern
+  (caller-managed external atmosphere) is simpler and more RL-friendly;
+  the stub's design was overdesigned for v2's needs.
+- `self.atmosphere` placeholder attribute on `TelescopeSim`.
+
+### Tests
+
+- `tests/unit/test_atmosphere_chain.py` — 6 tests covering the contract:
+  reference PSF is never polluted, atmos measurably affects the sample
+  PSF, a Z4 atmosphere is cancelled by a Zernike fit-role corrector
+  (PSF matches reference at rtol=1e-7), fit-corrector actuator echo
+  matches the analytical amplitude, opaque atmos (no phase_for) still
+  modifies wavefront without fit-role coupling, and closed-loop:
+  feeding the echo into an impose-role corrector cancels the
+  atmosphere. Uses minimal `_FakeAtmos` / `_OpaqueAtmos` stand-ins;
+  no HCIPy `InfiniteAtmosphericLayer` required.
+
+### Feature gaps (CLAUDE.md update)
+
+Removed from the local feature-gap table:
+- HCIPy atmosphere wiring — addressed by the per-sample `atmos` kwarg.
+
+Remaining deferred gaps (unchanged from v2.0.0a7): `convolve_im`,
+`include_fft`, `pow_scale`, `gauss_noise`, `aprox_ptt_with_dm`,
+Xinetics DM corrector, Lyot/perfect coronagraphs.
+
 ## [2.0.0a7] - 2026-05-19
 
 ### Added

@@ -24,6 +24,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_intensity_output_tap_parity.py`: pins
+  `IntensityOutputTap` against the canonical legacy stacking pattern
+  (`TelescopeSim/.../multi_aperture_psf.py:520-523`,
+  `Xs += [out_samp[..., None]]` then `np.concatenate(Xs, axis=2)`).
+  Eight assertions: single-focal-plane (H, W, 1) shape, multi-focal-plane
+  channels-last stack, channel order follows the config list (NOT dict
+  order), `.intensity` is the source (not per-WF wavefronts), and clear
+  errors for empty names / missing focal plane / wrong input type. No
+  bugs surfaced.
 - `tests/unit/test_segmented_circular_aperture_parity.py`: pins
   `SegmentedCircularAperture` against the canonical legacy construction
   (`TelescopeSim/.../multi_aperture_psf.py:146-166, 212-242`). Ten

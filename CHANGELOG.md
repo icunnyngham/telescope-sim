@@ -24,6 +24,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_post_normalization_parity.py`: covers four
+  post-processors in `post/normalization.py` (audit campaign items
+  11-14). Twelve assertions across `MaxIntensityNorm`, `MaxImageNorm`,
+  `PerSampleNorm`, and `ChannelsFirst`:
+  - `MaxIntensityNorm` divides per-channel by `reference_peak_intensities`
+    matching legacy `psf /= lam_setup['peak_int']`; raises when extras
+    missing or channel count mismatches.
+  - `MaxImageNorm` matches legacy `out_samp /= out_samp.max()` for 2D
+    (coro lineage); per-channel global max for 3D stacks; safe at zero.
+  - `PerSampleNorm` matches legacy `(out - min) / (max - min)` for 2D;
+    per-channel for 3D (matches legacy per-filter then concat behavior
+    on single-channel-per-filter inputs); safely returns zeros for a
+    constant channel.
+  - `ChannelsFirst` transposes (H, W, C) → (C, H, W) for PyTorch
+    (canonical 2024-09 addition — was the only C-bucket component);
+    2D passthrough; round-trippable. Closes the last C-bucket gap.
+  No bugs surfaced.
 - `tests/unit/test_identity_coronagraph_parity.py`: pins
   `IdentityCoronagraph` as a true passthrough. Four assertions:
   `apply(wf) is wf` (identity, not just equality), aberrated input

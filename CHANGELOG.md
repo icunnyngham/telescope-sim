@@ -24,6 +24,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_zernike_corrector_parity.py`: pins `ZernikeCorrector`
+  against the legacy DM construction
+  (`variants/coro__coro_mas_psf.py:144-148, 328`). Ten assertions:
+  basis matches legacy bit-for-bit (rtol=0, atol=0), per-mode peak
+  normalization is exactly 1.0, `set_actuators(v)` writes
+  `v * actuate_scale` internally and the `actuators` getter returns
+  caller-facing `v` (not the scaled internal value),
+  `flatten()` zeros both views, `apply()` matches a direct
+  `hcipy.DeformableMirror(basis)(wf)` call (atol=1e-15),
+  `starting_mode=1` vs `starting_mode=2` produce the right basis
+  (piston vs tip — concrete cross-checks). Plus validation paths
+  for wrong-length actuators and unbound calls. No bugs surfaced —
+  prior fixes from commit 33914ee (the `/2` OPD factor + lstsq
+  switchover) are independently covered by
+  `tests/unit/test_residual_fit.py`.
 - `tests/unit/test_external_pupil_aperture_parity.py`: pins
   `ExternalPupilAperture` against both legacy paths:
   `hcipy.evaluate_supersampled(aper_func(), grid, 8)` (coro lineage,

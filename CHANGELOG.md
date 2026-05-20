@@ -24,6 +24,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_physical_focal_plane_parity.py`: pins
+  `PhysicalFocalPlane` against the legacy fiber variant
+  (`variants/fiber_rms__multi_aperture_psf.py:267-269, 290`). Nine
+  assertions: focal_grid construction
+  (`make_pupil_grid(focal_res, focal_extent)`), propagator-with-
+  focal_length cross-check (atol=1e-30), broadband-wavelength formula
+  (`central * linspace(1-h/2, 1+h/2, N)`), `wavefront_total_power=1.0`
+  honored (legacy hardcodes total_power=1), default total_power left
+  alone when `None`, num_samples=1 path, reference-PSF caching
+  (peak + sum), unbuilt-state error, and the per-wavelength chain loop
+  matching the legacy `for wf in wfs: ... wf_foc = prop(wf_sm)`. No
+  bugs surfaced.
 - `tests/unit/test_zernike_corrector_parity.py`: pins `ZernikeCorrector`
   against the legacy DM construction
   (`variants/coro__coro_mas_psf.py:144-148, 328`). Ten assertions:

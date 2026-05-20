@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (audit campaign — v2.0 → legacy parity sweep)
+
+- `tests/unit/test_vortex_coronagraph_parity.py`: pins
+  `VortexCoronagraphImpl` against a direct `hcipy.VortexCoronagraph` call
+  built the legacy way (`variants/coro__coro_mas_psf.py:189`). Five
+  assertions: pupil-plane electric field (atol=1e-14), focal-plane
+  intensity (rtol=1e-12), charge-pass-through with charge=4, Lyot
+  supersample override, and unbound `apply()` raising. The wrapper has
+  no math of its own — these are structural-faithfulness tests. No bugs
+  surfaced.
+
 ## [2.0.0a5] - 2026-05-17
 
 ### Fixed

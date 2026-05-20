@@ -1,0 +1,67 @@
+# NoisyDetector parity fixture #17.
+#
+# Three-segment circular aperture (same geometry as fixture 16) with the
+# new `noisy_intensity` output tap. Exercises the v2 NoisyIntensityOutputTap
+# against the legacy `_addNoiseToObservation` path with seeded numpy RNG
+# (np.random.seed(42)).
+#
+# Multiple actuation + photon flux configurations are captured via the
+# custom run_legacy_17 / run_v2_17 runners (this YAML only declares the
+# base optical setup; the runner sweeps `output_overrides`).
+
+pupil:
+  resolution: 128
+  extent: 1.4
+
+aperture:
+  type: segmented_circular
+  segment_diameter: 0.4
+  layout: elf
+  n_segments: 3
+  ring_radius: 0.5
+  supersample: 16
+
+correctors:
+  segments:
+    type: segmented_ptt
+    piston_scale: 1.0e-6
+    tip_tilt_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [segments]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 1.0
+    focal_res: 64
+    fractional_bandwidth: 0.0
+    num_samples: 1
+
+outputs:
+  clean_psf:
+    # Clean intensity (no noise) — same path the legacy hits when
+    # int_phot_flux=None (it skips _addNoiseToObservation entirely).
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing: []
+  noisy_psf:
+    tap:
+      type: noisy_intensity
+      focal_planes: [filter1]
+      # int_phot_flux default; the runner overrides per-sample via
+      # sim.sample(output_overrides=...)
+      int_phot_flux: 1.0e6
+      # aperture_area: null  → loader injects from ApertureResult.area
+      clamp_nonnegative: true
+      detector:
+        read_noise: 5.0
+        dark_current_rate: 1.0
+        flat_field: 0.0
+        include_photon_noise: true
+
+strehl_method: peak

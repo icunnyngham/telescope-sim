@@ -75,21 +75,20 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("fixture_id", help="e.g. 01_canonical_2024-09")
     parser.add_argument(
-        "--stats-rtol", type=float, default=1e-6,
+        "--stats-rtol",
+        type=float,
+        default=1e-6,
         help="relative tolerance for summary statistics (default 1e-6)",
     )
     parser.add_argument(
-        "--sample-rtol", type=float, default=1e-4,
+        "--sample-rtol",
+        type=float,
+        default=1e-4,
         help="relative tolerance for sampled pixel values (default 1e-4)",
     )
     args = parser.parse_args()
 
-    digest_path = (
-        REPO_ROOT
-        / "fixtures/runner/digests"
-        / args.fixture_id
-        / "expected.json"
-    )
+    digest_path = REPO_ROOT / "fixtures/runner/digests" / args.fixture_id / "expected.json"
     if not digest_path.is_file():
         print(f"no recorded digest at {digest_path}", file=sys.stderr)
         return 2
@@ -99,8 +98,10 @@ def main() -> int:
 
     print(f"v2 outputs for {args.fixture_id}:")
     for name, arr in actual.items():
-        print(f"  {name}: shape={arr.shape}, dtype={arr.dtype}, "
-              f"range=[{arr.min():.4g}, {arr.max():.4g}]")
+        print(
+            f"  {name}: shape={arr.shape}, dtype={arr.dtype}, "
+            f"range=[{arr.min():.4g}, {arr.max():.4g}]"
+        )
 
     tol = Tolerance(
         stats_rtol=args.stats_rtol,

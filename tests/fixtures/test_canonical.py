@@ -78,6 +78,32 @@ def test_canonical_v2_reproduces_digest(fixture_id: str, telescope_sim_module) -
 
 @pytest.mark.slow
 @pytest.mark.fixture
+def test_noisy_psf_v2_reproduces_digest(telescope_sim_module) -> None:  # noqa: ARG001
+    """Fixture #17: v2 reproduces seeded-noise legacy outputs bit-for-bit.
+
+    Pins the v2 ``NoisyIntensityOutputTap`` (single-call Field-based
+    design) against the legacy ``_addNoiseToObservation`` (Wavefront-
+    reconstruction). Three configurations (at-rest + two photon fluxes,
+    plus a tip-tilt + flux case) captured under ``np.random.seed(42)``.
+
+    Detector construction is forced eager at sim-build time so the
+    flat-field RNG-burn matches the legacy's sampler-init timing.
+    """
+    fixture_id = "17_noisy_psf"
+    digest_path = REPO_ROOT / "fixtures/runner/digests" / fixture_id / "expected.json"
+    assert digest_path.is_file(), f"missing digest at {digest_path}"
+
+    from run_v2_17_noisy_psf import reproduce  # noqa: PLC0415
+
+    recorded = read_digest(digest_path)
+    actual = reproduce()
+
+    results = compare_digest(actual, recorded)
+    assert all_ok(results), "\n".join(str(r) for r in results)
+
+
+@pytest.mark.slow
+@pytest.mark.fixture
 def test_strehl_zernike_v2_reproduces_digest(telescope_sim_module) -> None:  # noqa: ARG001
     """Fixture #16: v2 reproduces both Strehl modes on an 8-case actuation sweep.
 

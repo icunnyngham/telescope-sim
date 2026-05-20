@@ -43,25 +43,33 @@ def _actuation_cases() -> list[tuple[str, np.ndarray]]:
     Z = np.zeros((N_MIR, 3))
     cases.append(("at_rest", Z.copy()))
 
-    a = Z.copy(); a[:, 1] = 0.1
+    a = Z.copy()
+    a[:, 1] = 0.1
     cases.append(("global_tip_small", a))
 
-    a = Z.copy(); a[:, 1] = 0.5
+    a = Z.copy()
+    a[:, 1] = 0.5
     cases.append(("global_tip_large", a))
 
-    a = Z.copy(); a[:, 2] = 0.1
+    a = Z.copy()
+    a[:, 2] = 0.1
     cases.append(("global_tilt_small", a))
 
-    a = Z.copy(); a[0, 0] = 0.3; a[1, 0] = -0.3
+    a = Z.copy()
+    a[0, 0] = 0.3
+    a[1, 0] = -0.3
     cases.append(("differential_piston", a))
 
-    a = Z.copy(); a[0] = (0.2, 0.1, 0.1)
+    a = Z.copy()
+    a[0] = (0.2, 0.1, 0.1)
     cases.append(("seg0_combined", a))
 
-    a = Z.copy(); a[:, 1] = (0.3, -0.3, 0.3)
+    a = Z.copy()
+    a[:, 1] = (0.3, -0.3, 0.3)
     cases.append(("per_segment_tip", a))
 
-    a = Z.copy(); a[:, 0] = 0.5
+    a = Z.copy()
+    a[:, 0] = 0.5
     cases.append(("global_piston_large", a))
 
     return cases
@@ -107,8 +115,10 @@ def main() -> int:
 
     print("v2 reproduction:")
     for i, label in enumerate(CASE_LABELS):
-        print(f"  {label:<24s}  peak={actual['strehls_peak'][i, 0]:.4f}  "
-              f"matched_filter={actual['strehls_matched_filter'][i, 0]:.4f}")
+        print(
+            f"  {label:<24s}  peak={actual['strehls_peak'][i, 0]:.4f}  "
+            f"matched_filter={actual['strehls_matched_filter'][i, 0]:.4f}"
+        )
 
     results = compare_digest(actual, recorded, tol=Tolerance())
     print("\nComparison:")

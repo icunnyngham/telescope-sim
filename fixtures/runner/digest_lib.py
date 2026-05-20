@@ -155,7 +155,11 @@ class DigestComparison:
 
     def __str__(self) -> str:
         flag = "OK " if self.ok else "FAIL"
-        return f"[{flag}] {self.output_name}: " + "; ".join(self.notes) if self.notes else f"[{flag}] {self.output_name}"
+        return (
+            f"[{flag}] {self.output_name}: " + "; ".join(self.notes)
+            if self.notes
+            else f"[{flag}] {self.output_name}"
+        )
 
 
 def _close(a: float, b: float, rtol: float, atol: float) -> bool:
@@ -192,15 +196,13 @@ def compare_array_digest(
         "sum": float(np.sum(a)),
     }
     stats_match = all(
-        _close(actual_stats[k], rec_stats[k], tol.stats_rtol, tol.stats_atol)
-        for k in actual_stats
+        _close(actual_stats[k], rec_stats[k], tol.stats_rtol, tol.stats_atol) for k in actual_stats
     )
     if not stats_match:
         for k in actual_stats:
             if not _close(actual_stats[k], rec_stats[k], tol.stats_rtol, tol.stats_atol):
                 notes.append(
-                    f"stats.{k}: actual {actual_stats[k]:.6g} vs recorded "
-                    f"{rec_stats[k]:.6g}"
+                    f"stats.{k}: actual {actual_stats[k]:.6g} vs recorded {rec_stats[k]:.6g}"
                 )
 
     # Compare sampled pixels at the recorded indices (recompute indices from
@@ -208,9 +210,7 @@ def compare_array_digest(
     samples_match = True
     if shape_match:
         rec_samples = recorded["samples"]
-        indices = _stable_pixel_indices(
-            a.shape, rec_samples["n"], rec_samples["seed"]
-        )
+        indices = _stable_pixel_indices(a.shape, rec_samples["n"], rec_samples["seed"])
         if _index_hash(indices) != rec_samples["indices_hash"]:
             notes.append("indices_hash mismatch (sampling scheme differs)")
             samples_match = False

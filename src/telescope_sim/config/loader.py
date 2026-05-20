@@ -172,6 +172,16 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
         if tap_type == "noisy_intensity" and tap_payload.get("aperture_area") is None:
             tap_payload["aperture_area"] = aperture_result.area
         tap: OutputTap = tap_cls(name=out_name, **tap_payload)
+        # If the tap exposes a focal-grid binding hook, call it now —
+        # gives noisy taps a chance to construct their (RNG-stateful)
+        # HCIPy detectors at sim-build time, BEFORE any user-level
+        # np.random.seed() reset.
+        if hasattr(tap, "_bind_focal_grid"):
+            target_names = list(getattr(tap, "focal_plane_names", []))
+            if target_names:
+                fp = focal_planes.get(target_names[0])
+                if fp is not None:
+                    tap._bind_focal_grid(fp.lam_setup.focal_grid)
 
         # Post-processors
         pps: list[PostProcessor] = []

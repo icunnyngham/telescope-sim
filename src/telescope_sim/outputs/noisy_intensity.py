@@ -96,6 +96,20 @@ class NoisyIntensityOutputTap(OutputTap):
         """Construct the underlying HCIPy NoisyDetector once."""
         return hcipy.NoisyDetector(detector_grid, **self._detector_config)
 
+    def _bind_focal_grid(self, focal_grid: Any) -> None:
+        """Eagerly construct the detector so RNG state is consumed at sim-build time.
+
+        Without this, the detector is built lazily on first ``extract()``,
+        which means the ``flat_field`` setter's ``np.random.normal(...)``
+        call burns RNG state *after* user-level ``np.random.seed(N)`` —
+        causing seeded outputs to drift from the legacy reference (legacy
+        builds the detector during sampler construction). The loader calls
+        this hook after building the focal plane so the RNG burn happens
+        once at construction, before any user-level seed reset.
+        """
+        if self._detector is None:
+            self._detector = self._build_detector(focal_grid)
+
     def extract(
         self,
         fp_results: Any,

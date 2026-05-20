@@ -135,12 +135,14 @@ class PhysicalFocalPlane(FocalPlane):
         corrector_chain: list[Any],
         *,
         coronagraph: Any | None = None,
+        atmos: Any | None = None,
     ) -> FocalPlaneResult:
+        """Propagate per-λ wavefronts: (atmos?) → correctors → (coronagraph?) → propagator."""
         assert self._lam_setup is not None
         focal_wavefronts: list[Any] = []
         total = np.zeros((self.focal_res, self.focal_res), dtype=np.float64)
         for wf in self._lam_setup.wavefronts:
-            wf_out = wf
+            wf_out = wf if atmos is None else atmos(wf)
             for c in corrector_chain:
                 wf_out = c.apply(wf_out)
             if coronagraph is not None:

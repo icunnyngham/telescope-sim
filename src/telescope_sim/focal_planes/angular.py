@@ -136,18 +136,23 @@ class AngularFocalPlane(FocalPlane):
         corrector_chain: list[Any],
         *,
         coronagraph: Any | None = None,
+        atmos: Any | None = None,
     ) -> FocalPlaneResult:
         """Propagate this filter's wavefronts through the chain.
 
         Order of operations per monochromatic wavefront:
-            wf → c1 → c2 → ... → cN → (coronagraph?) → focal propagator → |.|^2
-        Returns the summed intensity and the per-wavelength focal Wavefronts.
+            wf → (atmos?) → c1 → c2 → ... → cN → (coronagraph?) → focal propagator → |.|²
+
+        ``atmos`` is any callable ``Wavefront → Wavefront`` (typically an HCIPy
+        ``InfiniteAtmosphericLayer`` or ``MultiLayerAtmosphere``, but a plain
+        callable works too — useful for tests). Returns the summed intensity
+        and the per-wavelength focal Wavefronts.
         """
         assert self._lam_setup is not None
         focal_wavefronts: list[Any] = []
         total = np.zeros((self.focal_res, self.focal_res), dtype=np.float64)
         for wf in self._lam_setup.wavefronts:
-            wf_out = wf
+            wf_out = wf if atmos is None else atmos(wf)
             for c in corrector_chain:
                 wf_out = c.apply(wf_out)
             if coronagraph is not None:

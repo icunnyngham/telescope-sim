@@ -77,7 +77,6 @@ class TelescopeSim:
 
     def __init__(self, components: _PipelineComponents) -> None:
         self._c = components
-        self.atmosphere: Any = None  # No atmosphere wiring yet
 
     # --- Construction entry points -----------------------------------------
 
@@ -122,6 +121,7 @@ class TelescopeSim:
         self,
         actuations: Mapping[str, ArrayLike] | None = None,
         *,
+        atmos: Any = None,
         output_overrides: Mapping[str, Mapping[str, Any]] | None = None,
         meas_strehl: bool = False,
     ) -> dict[str, Any]:
@@ -133,6 +133,24 @@ class TelescopeSim:
             Per-corrector actuator state. Keys are corrector names (matching
             those declared in the config); each value is whatever shape that
             corrector's ``set_actuators`` accepts.
+        atmos
+            Per-sample external atmosphere. Any callable taking a
+            ``hcipy.Wavefront`` and returning a modified ``hcipy.Wavefront``
+            (typically a ``hcipy.InfiniteAtmosphericLayer`` or
+            ``hcipy.MultiLayerAtmosphere``, but any wf→wf callable works).
+            Applied at the front of the chain, before any corrector. The
+            caller owns time evolution — v2 holds no atmosphere state.
+
+            If the object also exposes ``.phase_for(lam)`` returning
+            HCIPy-convention phase = 2π·OPD/lam, the atmosphere's OPD is
+            seeded into the per-corrector cumulative-OPD stream, so fit-role
+            correctors with ``fit_source="cumulative_phase_pre_self"`` will
+            naturally fit to (and cancel) the atmosphere. Without
+            ``.phase_for`` the wavefront is still modified, but fit-role
+            correctors only see corrector-chain OPD.
+
+            The reference PSF is never atmospheric — it's cached once at
+            sim-build time with ``atmos=None`` implicit.
         output_overrides
             Per-sample tap-config overrides, keyed by output name. For example,
             ``{"psf": {"int_phot_flux": 5.0e7}}`` to vary the photon flux on a
@@ -168,8 +186,16 @@ class TelescopeSim:
         #    snapshots are also saved for step 5 (residual-fit target
         #    strategies). Convention: fit_surface returns *matching*
         #    actuator values; we negate at the apply site for fit-role.
+        #
+        #    Atmosphere seeds the running OPD: if `atmos` exposes
+        #    `.phase_for(lam)`, extract OPD via phase=2π·OPD/lam ⇒ OPD =
+        #    phase_for(1)/(2π). Otherwise the wavefront is still modified
+        #    in step 3 but the OPD stream stays at zero (fit-role correctors
+        #    won't see the atmosphere).
         correctors_by_name = {c.name: c for c in self._c.correctors}
         running_opd = np.zeros(self._c.pupil_grid.size, dtype=np.float64)
+        if atmos is not None and hasattr(atmos, "phase_for"):
+            running_opd = running_opd + np.asarray(atmos.phase_for(1.0)) / (2.0 * np.pi)
         cum_opd_pre: list[NDArray[np.float64]] = []
         seen_names: set[str] = set()
 
@@ -219,11 +245,12 @@ class TelescopeSim:
 
         # 3) Propagate each focal plane and collect FocalPlaneResult objects
         #    (each holds both summed intensity and per-wavelength wavefronts
-        #    so downstream taps can pick what they need).
+        #    so downstream taps can pick what they need). Atmosphere applies
+        #    at the front of the per-λ loop, before any corrector.
         fp_results: dict[str, Any] = {}
         for name, fp in self._c.focal_planes.items():
             fp_results[name] = fp._propagate_chain(
-                self._c.correctors, coronagraph=self._c.coronagraph
+                self._c.correctors, coronagraph=self._c.coronagraph, atmos=atmos
             )
 
         # 4) Run output taps + per-output post-processors.

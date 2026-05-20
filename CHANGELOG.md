@@ -24,6 +24,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_fiber_dual_output_tap_parity.py`: pins
+  `FiberDualOutputTap` against the legacy fiber loop
+  (`variants/fiber_rms__multi_aperture_psf.py:369-386`). Five
+  assertions: stacked focal+mmf output matches the legacy
+  `np.stack([focal_total, mmf_total])` (focal channel atol=1e-14, mmf
+  channel rtol=1e-12), `max_in_cache` override is honored on the
+  underlying `hcipy.StepIndexFiber`, the v2 focal channel equals the
+  pre-summed `FocalPlaneResult.intensity` (no double-counting),
+  and clear errors for missing focal plane / unknown fiber type. Marked
+  `@pytest.mark.fiber` (LP-fiber mode solves dominate runtime, ~2.5 min).
+  No bugs surfaced.
 
 ## [2.0.0a5] - 2026-05-17
 

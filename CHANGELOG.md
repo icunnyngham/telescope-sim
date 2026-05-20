@@ -24,6 +24,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   focal intensity parity (rtol=1e-12), charge-pass-through with both
   charge=2 and charge=4 (incl. default check), unbound `apply()`
   raising. No bugs surfaced.
+- `tests/unit/test_external_pupil_aperture_parity.py`: pins
+  `ExternalPupilAperture` against both legacy paths:
+  `hcipy.evaluate_supersampled(aper_func(), grid, 8)` (coro lineage,
+  callable mode) and `vp.generate_pupil(outer=..., pupil_grid=...)`
+  (VAMPIRES lineage, field mode). Nine assertions: bit-for-bit field
+  match against the legacy callable path, supersample-default-is-16
+  cross-check, field-mode call-signature verification (via a
+  CALL_LOG-instrumented stub module), dotted-module-AND-filesystem-path
+  loading parity, plus 4 validation tests (unknown mode, missing
+  module, missing path, missing function). No bugs surfaced.
 - `tests/unit/test_fiber_dual_output_tap_parity.py`: pins
   `FiberDualOutputTap` against the legacy fiber loop
   (`variants/fiber_rms__multi_aperture_psf.py:369-386`). Five

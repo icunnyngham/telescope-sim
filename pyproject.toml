@@ -18,6 +18,7 @@ keywords = [
     "telescope",
     "psf",
     "adaptive-optics",
+    "atmosphere",
     "coronagraphy",
     "hcipy",
     "simulation",

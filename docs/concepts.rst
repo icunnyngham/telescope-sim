@@ -93,9 +93,9 @@ participates in a sample:
     - ``"residual_fit_only"`` — just the residual fit.
 
 This two-axis design covers the patterns observed across the legacy
-variants (PTT-imposed-with-DM-approximation, atmosphere-fit-residual,
-stacked imposers with a single fitting DM, …) without bespoke logic per
-case.
+variants (PTT-imposed-with-DM-approximation, cumulative residual fits
+that include external atmosphere, stacked imposers with a single
+fitting DM, …) without bespoke logic per case.
 
 Reference PSF
 -------------
@@ -110,8 +110,26 @@ normalization. Post-processors that depend on the reference (e.g.
 Atmosphere
 ----------
 
-Atmospheric layers are a special "impose" element conceptually at the
-front of the chain, but with a caller-driven time-evolution method
-(``evolve_until(t)``) — the environment owns the clock, not the
-simulator. (Atmosphere wiring is on the v2.0 backlog; at-rest samples
-work today.)
+Atmospheres are **not** correctors. They enter the simulation as a
+per-sample input on :meth:`~telescope_sim.pipeline.TelescopeSim.sample`::
+
+    out = sim.sample(atmos=my_atmosphere, ...)
+
+The contract for ``atmos`` is loose by design: any wf→wf callable
+(typically a ``hcipy.InfiniteAtmosphericLayer`` or
+``hcipy.MultiLayerAtmosphere``, but anything that maps a
+``hcipy.Wavefront`` to a modified one works) is applied at the front of
+the chain, before any corrector. The caller owns time evolution — v2
+holds no atmosphere state.
+
+If the atmosphere also exposes ``phase_for(lam)`` returning
+HCIPy-convention phase (``2π·OPD/lam``), its OPD is seeded into the
+per-corrector cumulative-OPD stream. A downstream ``fit``-role corrector
+with ``fit_source="cumulative_phase_pre_self"`` will then naturally fit
+to (and, applied with the role's automatic sign-flip, cancel) the
+atmosphere — no bespoke "atmosphere corrector" needed. Atmospheres
+without ``phase_for`` still modify the wavefront, but only the wavefront
+sees them; fit-role correctors see only the corrector chain.
+
+The reference PSF used for Strehl normalization is never atmospheric:
+it is cached once at sim-build with ``atmos=None`` implicit.

@@ -31,11 +31,14 @@ Common patterns this expresses:
   plus a downstream ``xinetics`` corrector (``fit``, ``fit_source=segments``,
   target=none) — the segmented mirror's commanded surface is approximated by
   the DM in the beam, but Y reports the segment commands.
-- **Atmosphere + residual fit**: an ``impose`` corrector for the atmosphere
-  followed by an ``actuate`` corrector with
-  ``target_strategy=actuators_plus_residual_fit`` — Y reports
-  ``model_actuators + fit(atmosphere)``, i.e. the correction the model would
-  have needed to fully cancel the disturbance.
+- **Cumulative residual-fit DM**: an ``actuate`` corrector with
+  ``target_strategy=actuators_plus_residual_fit`` and
+  ``fit_source="cumulative_phase_pre_self"`` — Y reports
+  ``model_actuators + fit(cumulative_phase_pre_self)``, i.e. the correction
+  the model would have needed to fully cancel everything upstream. The
+  upstream signal can be other imposed correctors *and* the external
+  ``atmos=...`` kwarg to ``sample()``; atmosphere is not a corrector but it
+  does seed the cumulative-OPD stream when it exposes ``.phase_for(lam)``.
 - **Stacked imposes + fitted DM**: any number of ``impose`` correctors
   followed by a single ``actuate`` corrector with
   ``target_strategy=actuators_plus_residual_fit`` for ML training against

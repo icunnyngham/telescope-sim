@@ -79,6 +79,12 @@ Concrete implementations
 .. automodule:: telescope_sim.post.normalization
    :members:
 
+.. automodule:: telescope_sim.post.noisy_detector
+   :members:
+
+.. automodule:: telescope_sim.post.convolve
+   :members:
+
 .. automodule:: telescope_sim.strehl
    :members:
 

@@ -33,7 +33,43 @@ top-level shape is::
           - <name>                          # bare string = no-arg post-processor
           - { type: <name>, ... }           # mapping form for parameterized ones
 
+    strehl_method: peak | matched_filter | null
     strehl_core_rad: <float | null>
+
+Strehl
+------
+
+``strehl_method``
+    Selects the Strehl estimator. ``"peak"`` reads the current PSF at the
+    *reference* PSF's argmax — so a tip-tilt that moves the peak off-center
+    correctly drops Strehl below 1. ``"matched_filter"`` is a normalized
+    matched-filter projection over a circular core mask of radius
+    ``strehl_core_rad`` centered on the focal-grid origin; pixels are
+    weighted by the reference intensity. If unset, defaults to
+    ``"matched_filter"`` when ``strehl_core_rad`` is given (legacy
+    behavior), else ``"peak"``.
+
+``strehl_core_rad``
+    Required when ``strehl_method == "matched_filter"``; ignored for
+    ``"peak"``.
+
+Per-sample state
+----------------
+
+``sample()`` accepts a few non-actuator inputs per call:
+
+- ``actuations`` — per-corrector actuator state, keyed by corrector name.
+- ``atmos`` — external atmosphere (any wf→wf callable), see
+  :doc:`concepts` for the contract.
+- ``output_overrides`` — per-output, per-tap-config overrides.
+  Shape ``{output_name: {key: value, ...}}``. The pipeline puts the
+  inner mapping on each post-processor's
+  :class:`~telescope_sim.abc.PipelineContext` as ``context.overrides``;
+  processors that consume per-sample state (e.g. ``noisy_detector`` reads
+  ``int_phot_flux``, ``convolve_image`` reads ``convolve_image``) check
+  the override and fall back to their YAML default. Processors with no
+  per-sample state ignore the field.
+- ``meas_strehl`` — if true, return ``out["strehls"]``.
 
 Stages
 ------
@@ -109,6 +145,54 @@ Post-processors
 
 ``channels_first``
     Transpose ``(H, W, C) → (C, H, W)``.
+
+``noisy_detector``
+    Apply ``hcipy.NoisyDetector`` (read noise, dark current, flat-field,
+    photon shot noise) to a single-channel intensity image.
+
+    Fields:
+
+    - ``int_phot_flux`` (float | null) — photon flux in photons/m². When
+      set, rescales the input image so total accumulated charge =
+      ``int_phot_flux * aperture_area`` (legacy ``_addNoiseToObservation``
+      contract). ``None`` integrates at the natural input scale (useful
+      when an upstream ``convolve_image`` has imposed absolute
+      brightness).
+    - ``detector`` (mapping) — forwarded to ``hcipy.NoisyDetector``:
+      ``read_noise``, ``dark_current_rate``, ``flat_field``,
+      ``include_photon_noise``, ``subsampling``.
+    - ``clamp_nonnegative`` (bool, default ``True``) — apply ``np.abs``
+      to read-out (legacy workaround for Gaussian read noise pulling
+      pixels negative). Disable for science-faithful analyses.
+
+    Single-focal-plane only: the processor needs one focal grid. For
+    multi-filter noisy outputs, declare one output (with its own
+    ``noisy_detector``) per filter.
+
+    Per-sample override: ``output_overrides={"<output_name>":
+    {"int_phot_flux": <flux>}}``.
+
+``convolve_image``
+    Convolve the focal-plane PSF (as a kernel, normalized by the at-rest
+    reference PSF sum) with a caller-supplied scene. Equivalent to legacy
+    ``fftconvolve(scene, psf / reference_psf_sum, mode='same')``.
+
+    Fields:
+
+    - ``image`` (array-like | null) — default 2D scene to convolve with.
+      ``None`` means no default; the caller must supply ``convolve_image``
+      via ``output_overrides`` per sample.
+
+    Single-focal-plane only (kernel normalization needs a single
+    ``reference_psf_sum``). For multi-filter convolution, split into one
+    output (with its own ``convolve_image``) per filter.
+
+    Per-sample override: ``output_overrides={"<output_name>":
+    {"convolve_image": <2D array>}}``.
+
+    Composes cleanly with ``noisy_detector`` for extended-source noisy
+    imaging — the recommended order is
+    ``intensity → convolve_image → noisy_detector``.
 
 Examples
 --------

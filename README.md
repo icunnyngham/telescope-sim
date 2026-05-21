@@ -17,10 +17,33 @@ package.
 
 ## Status
 
-🟡 **Alpha (v2.0.0a1).** The pipeline is wired end-to-end and reproduces 10
+**v2.0.1.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex and vector-vortex coronagraphs, angular
 and physical focal planes, and multi-mode-fiber dual outputs.
+
+### What's new since v2.0.0
+
+- **Atmosphere** — pass any HCIPy atmosphere (or any wf→wf callable) as
+  `sim.sample(atmos=...)`. Atmospheres that expose `.phase_for(lam)` couple
+  automatically into fit-role correctors for cancellation. The reference
+  PSF is atmosphere-free by construction.
+- **Detector noise** — the `noisy_detector` post-processor wraps HCIPy's
+  `NoisyDetector` (read noise, dark current, flat-field, photon shot
+  noise) with optional `int_phot_flux` photometry. Per-sample overrides
+  via `sim.sample(output_overrides={...})`.
+- **Extended-source convolution** — the `convolve_image` post-processor
+  convolves the PSF with a caller-supplied scene. Composes with
+  `noisy_detector` for noisy extended-source imaging.
+- **Cumulative-OPD fit-role correctors** — `wavefront_role="fit"` with
+  `fit_source="cumulative_phase_pre_self"` lets a DM auto-fit any upstream
+  disturbance (atmosphere, imposed PTT, …) without bespoke wiring.
+- **Strehl methods** — `strehl_method: peak | matched_filter`, with the
+  matched-filter variant using a circular core mask of radius
+  `strehl_core_rad`.
+- **Extension tutorial** — `docs/tutorials/05_custom_components.ipynb`
+  walks through writing your own `Corrector` and `PostProcessor` via the
+  `@register(...)` registry.
 
 ## Quick start
 

@@ -6,6 +6,105 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0a9] - 2026-05-20
+
+### Added
+
+- `convolve_image` post-processor (kind: `convolve_image`) — closes the
+  `convolve_im` feature gap from the v2.0.0a6 audit. Convolves the
+  focal-plane PSF (as a kernel, normalized by the at-rest reference
+  PSF sum) with a caller-provided scene. Bit-identical to the legacy
+  formula `fftconvolve(scene, psf / reference_psf_sum, mode='same')`.
+  Per-sample image override via `sim.sample(output_overrides=...)`.
+  Single-focal-plane (kernel normalization needs one reference sum);
+  multi-channel outputs that want convolution must split into one
+  output per filter.
+
+- `PipelineContext.overrides` — first-class field carrying per-sample
+  tap-config overrides into post-processors. Populated by the
+  pipeline before running each output's post-processing list with
+  `output_overrides[output_name]`. Existing four normalization
+  post-processors ignore the field (no signature changes); new
+  post-processors that need per-sample state read from it.
+
+- `LoaderBindable` marker mixin on the `PostProcessor` ABC. Processors
+  that need focal-grid / aperture-area / reference-PSF-sum injected
+  at sim-build time implement `_bind_loader_dependencies(...)`. The
+  loader walks the post-processing list and calls the hook on any
+  processor exposing it. Replaces the v2.0.0a7 noisy-tap-specific
+  `_bind_focal_grid` mechanism with a general pattern.
+
+### Refactored
+
+- `NoisyIntensityOutputTap` → `NoisyDetectorPostProcessor`. The math
+  is unchanged (single-call `Detector.integrate(power_field, dt=1)`
+  with the field built from `intensity * grid.weights` and optionally
+  rescaled to `flux * area`), but noise is conceptually a
+  transformation on the PSF, not an extraction from the focal-plane
+  chain — so it belongs in `src/telescope_sim/post/` not
+  `src/telescope_sim/outputs/`. This refactor enables the
+  `intensity → convolve → noise` composition that's the physical
+  ordering for extended-source noisy imaging.
+
+  YAML schema for noisy outputs moves the noise block from the `tap`
+  section to the `post_processing` list:
+
+  Before (v2.0.0a7-a8):
+  ```yaml
+  outputs:
+    psf:
+      tap:
+        type: noisy_intensity
+        focal_planes: [filter1]
+        int_phot_flux: 1.0e6
+        detector: {...}
+  ```
+
+  After (v2.0.0a9+):
+  ```yaml
+  outputs:
+    psf:
+      tap:
+        type: intensity
+        focal_planes: [filter1]
+      post_processing:
+        - type: noisy_detector
+          int_phot_flux: 1.0e6
+          detector: {...}
+  ```
+
+  Eager detector binding for RNG-burn determinism is preserved (now
+  via the generalized `_bind_loader_dependencies` hook).
+
+### Removed
+
+- `src/telescope_sim/outputs/noisy_intensity.py` and its
+  `NoisyIntensityOutputTap` class — replaced by the post-processor.
+- The loader's noisy_intensity-tap special-case (aperture_area
+  injection + `_bind_focal_grid` call) — generalized into the
+  post-processor walk.
+
+### Tests
+
+- Migrated `test_noisy_intensity_output_tap_parity.py` →
+  `test_noisy_detector_post_processor_parity.py`. Same 16 assertions
+  retargeted at the post-processor. Fixture #17 unchanged at the
+  digest level; v2 reproducer passes bit-for-bit against the captured
+  legacy data.
+- New `tests/unit/test_convolve_image_post_processor.py` — 12
+  assertions covering structural, math, composition (with
+  noisy_detector), and validation.
+
+### Feature gaps (CLAUDE.md update)
+
+Removed from the local feature-gap table:
+- `convolve_im` PSF-convolution path — addressed by the
+  `convolve_image` post-processor.
+
+Remaining deferred gaps: `include_fft`, `pow_scale`, `gauss_noise`,
+`aprox_ptt_with_dm`, Xinetics DM corrector, Lyot/perfect
+coronagraphs.
+
 ## [2.0.0a8] - 2026-05-19
 
 ### Added

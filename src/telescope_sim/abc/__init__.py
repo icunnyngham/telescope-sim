@@ -10,7 +10,11 @@ from telescope_sim.abc.coronagraph import Coronagraph
 from telescope_sim.abc.corrector import Corrector
 from telescope_sim.abc.focal_plane import FocalPlane
 from telescope_sim.abc.output_tap import OutputTap
-from telescope_sim.abc.post_processor import PipelineContext, PostProcessor
+from telescope_sim.abc.post_processor import (
+    LoaderBindable,
+    PipelineContext,
+    PostProcessor,
+)
 
 __all__ = [
     "Aperture",
@@ -18,6 +22,7 @@ __all__ = [
     "Corrector",
     "Coronagraph",
     "FocalPlane",
+    "LoaderBindable",
     "OutputTap",
     "PostProcessor",
     "PipelineContext",

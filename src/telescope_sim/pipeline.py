@@ -270,6 +270,7 @@ class TelescopeSim:
                 focal_plane_name=",".join(out_spec.focal_plane_names),
                 reference_peak_intensity=ref_peaks[0] if ref_peaks else None,
                 reference_psf_sum=ref_sums[0] if ref_sums else None,
+                overrides=dict(output_overrides.get(out_spec.name) or {}),
                 extras={
                     "reference_peak_intensities": np.array(ref_peaks, dtype=np.float64),
                     "reference_psf_sums": np.array(ref_sums, dtype=np.float64),

@@ -26,7 +26,6 @@ import telescope_sim.focal_planes.angular  # noqa: F401
 import telescope_sim.focal_planes.physical  # noqa: F401
 import telescope_sim.outputs.fiber_dual  # noqa: F401
 import telescope_sim.outputs.intensity  # noqa: F401
-import telescope_sim.outputs.noisy_intensity  # noqa: F401
 import telescope_sim.post  # noqa: F401  (post-processor package imports its modules)
 from telescope_sim.abc import (
     Aperture,
@@ -162,26 +161,11 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
         tap_payload = out_cfg.tap.model_dump()
         tap_type = tap_payload.pop("type")
         tap_cls = lookup("output_tap", tap_type)
-        # The intensity tap takes focal_plane_names; other tap types may
-        # take different args, but for Phase 2 we only have intensity.
+        # The intensity / fiber_dual taps take focal_plane_names from the
+        # YAML's `focal_planes` field.
         if "focal_planes" in tap_payload:
             tap_payload["focal_plane_names"] = tap_payload.pop("focal_planes")
-        # The noisy_intensity tap takes an aperture_area; if the YAML didn't
-        # specify one, inject the value from the built aperture so users
-        # don't have to duplicate it across the config.
-        if tap_type == "noisy_intensity" and tap_payload.get("aperture_area") is None:
-            tap_payload["aperture_area"] = aperture_result.area
         tap: OutputTap = tap_cls(name=out_name, **tap_payload)
-        # If the tap exposes a focal-grid binding hook, call it now —
-        # gives noisy taps a chance to construct their (RNG-stateful)
-        # HCIPy detectors at sim-build time, BEFORE any user-level
-        # np.random.seed() reset.
-        if hasattr(tap, "_bind_focal_grid"):
-            target_names = list(getattr(tap, "focal_plane_names", []))
-            if target_names:
-                fp = focal_planes.get(target_names[0])
-                if fp is not None:
-                    tap._bind_focal_grid(fp.lam_setup.focal_grid)
 
         # Post-processors
         pps: list[PostProcessor] = []
@@ -193,6 +177,22 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
             getattr(tap, "focal_plane_names", [])
             or ([tap.source] if isinstance(tap.source, str) else [])
         )
+
+        # Loader-bound dependencies: walk post-processors and inject
+        # focal-plane / aperture info into any that implement the
+        # ``_bind_loader_dependencies`` hook. Used by ``noisy_detector``
+        # (needs focal_grid + aperture_area; eagerly builds the HCIPy
+        # NoisyDetector so flat_field RNG-burn happens BEFORE any
+        # user-level np.random.seed reset) and ``convolve_image`` (needs
+        # the focal plane's reference_psf_sum for kernel normalization).
+        for pp in pps:
+            if hasattr(pp, "_bind_loader_dependencies"):
+                pp._bind_loader_dependencies(
+                    aperture_result=aperture_result,
+                    focal_planes=focal_planes,
+                    focal_plane_names=fp_names,
+                )
+
         outputs.append(
             _OutputSpec(name=out_name, tap=tap, post_processors=pps, focal_plane_names=fp_names)
         )

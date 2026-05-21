@@ -23,14 +23,37 @@ class PipelineContext:
 
     Populated by the pipeline before running the post-processing list for each
     output. Includes reference values (peak intensity, normalized reference PSF)
-    used by normalization steps.
+    used by normalization steps, plus any per-sample overrides the caller
+    supplied via ``sim.sample(output_overrides={...})``.
     """
 
     output_name: str
     focal_plane_name: str
     reference_peak_intensity: float | None = None
     reference_psf_sum: float | None = None
+    overrides: dict[str, Any] = field(default_factory=dict)
     extras: dict[str, Any] = field(default_factory=dict)
+
+
+class LoaderBindable:
+    """Marker mixin for post-processors that need loader-injected dependencies.
+
+    The loader walks each output's post-processing list and calls
+    ``_bind_loader_dependencies(aperture_result, focal_planes, focal_plane_names)``
+    on any processor exposing the hook. Used by ``noisy_detector`` (needs the
+    focal grid + aperture area) and ``convolve_image`` (needs the reference
+    PSF sum). Processors without runtime dependencies simply don't expose
+    the hook and the loader skips them.
+    """
+
+    def _bind_loader_dependencies(
+        self,
+        *,
+        aperture_result: Any,
+        focal_planes: dict[str, Any],
+        focal_plane_names: list[str],
+    ) -> None:
+        raise NotImplementedError
 
 
 class PostProcessor(ABC):
@@ -48,4 +71,4 @@ class PostProcessor(ABC):
         ...
 
 
-__all__ = ["PostProcessor", "PipelineContext"]
+__all__ = ["PostProcessor", "PipelineContext", "LoaderBindable"]

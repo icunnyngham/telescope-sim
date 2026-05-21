@@ -50,18 +50,23 @@ outputs:
       focal_planes: [filter1]
     post_processing: []
   noisy_psf:
+    # v2.0.0a9: noise is a post-processor, not a tap. Same math as the
+    # previous noisy_intensity tap — single-call Detector.integrate with
+    # the wavelength-summed power_field rescaled to flux * area.
     tap:
-      type: noisy_intensity
+      type: intensity
       focal_planes: [filter1]
-      # int_phot_flux default; the runner overrides per-sample via
-      # sim.sample(output_overrides=...)
-      int_phot_flux: 1.0e6
-      # aperture_area: null  → loader injects from ApertureResult.area
-      clamp_nonnegative: true
-      detector:
-        read_noise: 5.0
-        dark_current_rate: 1.0
-        flat_field: 0.0
-        include_photon_noise: true
+    post_processing:
+      - type: noisy_detector
+        # int_phot_flux default; the runner overrides per-sample via
+        # sim.sample(output_overrides=...). The loader injects
+        # aperture_area + focal_grid from the focal plane.
+        int_phot_flux: 1.0e6
+        clamp_nonnegative: true
+        detector:
+          read_noise: 5.0
+          dark_current_rate: 1.0
+          flat_field: 0.0
+          include_photon_noise: true
 
 strehl_method: peak

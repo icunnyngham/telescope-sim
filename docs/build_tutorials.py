@@ -44,44 +44,70 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "The simplest pipeline: a 15-segment ring of circular sub-apertures, "
             "no atmosphere, no coronagraph. Loaded from the bundled `elf_15seg` preset."
         ),
+        _md(
+            "The `elf_15seg` preset is a small YAML config bundled with the package. "
+            "It declares the pupil grid, aperture, one PTT corrector, **two filters** "
+            "(500 nm and 1 µm) sharing the same focal-plane sampling, and a single "
+            "intensity output. Let's read it directly so the shape of a real config "
+            "is visible."
+        ),
+        _code(
+            "from importlib.resources import files\n"
+            "\n"
+            'config_text = files("telescope_sim.presets").joinpath("elf_15seg.yaml").read_text()\n'
+            "print(config_text)\n"
+        ),
         _code(
             "import numpy as np\n"
             "import matplotlib.pyplot as plt\n"
+            "from matplotlib.colors import LogNorm\n"
             "from telescope_sim import TelescopeSim\n"
+            "from telescope_sim.helpers.diagnostics import plot_opd_and_psfs\n"
             "\n"
             'sim = TelescopeSim.from_preset("elf_15seg")\n'
             'print("correctors:", list(sim.correctors))\n'
             'print("focal planes:", list(sim.focal_planes))\n'
         ),
         _md(
-            "Sample at rest (no actuators applied) and inspect the result. The "
-            "output `images['psf']` is channels-last over filters; the preset has "
-            "two filters at 500 nm and 1 µm."
+            "By convention in these tutorials, every PSF is shown next to the "
+            "**cumulative pupil OPD** that produced it — the wavefront state at "
+            "the back of the corrector chain (and including any external "
+            "atmosphere). Setting `meas_pupil_opd=True` on `sample()` returns "
+            "`out['pupil_opd']` as an `hcipy.Field`; the helper "
+            "`plot_opd_and_psfs` in `telescope_sim.helpers.diagnostics` handles "
+            "the layout (OPD via `hcipy.imshow_field(mask=sim.aperture.field)`, "
+            "PSFs via `imshow(norm=LogNorm(...))`, colorbars everywhere)."
+        ),
+        _md(
+            "Sample at rest (no actuators applied). The pupil OPD is ~0 inside "
+            "the aperture. Both filters share that same wavefront, but their "
+            "PSFs differ in scale — the 1 µm Airy disk is twice the angular size "
+            "of the 500 nm one because λ/D scales linearly with λ."
         ),
         _code(
-            "out = sim.sample(meas_strehl=True)\n"
-            'psf = out["images"]["psf"]\n'
-            'print("psf shape:", psf.shape, "strehls:", out["strehls"])\n'
-            "\n"
-            "fig, axes = plt.subplots(1, 2, figsize=(8, 4))\n"
-            "for ax, (filt, idx) in zip(axes, list(sim.focal_planes.items())):\n"
-            '    im = ax.imshow(np.log10(psf[..., 0] + 1e-8), cmap="inferno")\n'
-            "    ax.set_title(filt)\n"
-            "    ax.set_axis_off()\n"
-            'fig.suptitle("At-rest PSFs (log10)")\n'
-            "plt.tight_layout()\n"
+            "out = sim.sample(meas_strehl=True, meas_pupil_opd=True)\n"
+            "print('psf shape:', out['images']['psf'].shape)\n"
+            "print('strehls:', out['strehls'])\n"
+            "print('pupil_opd RMS (nm):', 1e9 * out['pupil_opd'].std())\n"
+            "plot_opd_and_psfs(sim, out, suptitle='At-rest PSFs')\n"
             "plt.show()\n"
         ),
-        _md("Apply random per-segment piston/tip/tilt errors and resample."),
+        _md(
+            "Apply random per-segment piston/tip/tilt errors and resample. The "
+            "OPD panel now shows the per-segment phase errors directly, and both "
+            "filters' PSFs degrade — but each degrades differently because Strehl "
+            "scales as `exp(-(2π σ_OPD / λ)²)`: the same OPD error costs more "
+            "Strehl at shorter wavelengths."
+        ),
         _code(
             "rng = np.random.default_rng(0)\n"
             "ptt = rng.normal(scale=0.1, size=(15, 3))\n"
-            'out = sim.sample(actuations={"segments": ptt}, meas_strehl=True)\n'
-            'print("strehls with errors:", out["strehls"])\n'
-            "\n"
-            'plt.imshow(np.log10(out["images"]["psf"][..., 0] + 1e-8), cmap="inferno")\n'
-            "plt.title(f\"PSF with random PTT errors — Strehl {out['strehls']['filter1']:.3f}\")\n"
-            'plt.axis("off")\n'
+            "out = sim.sample(\n"
+            '    actuations={"segments": ptt}, meas_strehl=True, meas_pupil_opd=True,\n'
+            ")\n"
+            "print('strehls with errors:', out['strehls'])\n"
+            "print('pupil_opd RMS (nm):', 1e9 * out['pupil_opd'].std())\n"
+            "plot_opd_and_psfs(sim, out, suptitle='Random PTT — both filters')\n"
             "plt.show()\n"
         ),
         _md(
@@ -149,17 +175,22 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "out_low = noisy_sim.sample(output_overrides={'psf': {'int_phot_flux': 1.0e5}})\n"
             "out_high = noisy_sim.sample(output_overrides={'psf': {'int_phot_flux': 1.0e9}})\n"
             "\n"
-            "fig, axes = plt.subplots(1, 3, figsize=(12, 4))\n"
+            "fig, axes = plt.subplots(1, 3, figsize=(13, 4))\n"
             "for ax, out_i, title in zip(\n"
             "    axes,\n"
             "    [out_low, out_clean, out_high],\n"
             "    ['flux = 1e5', 'flux = 1e7 (YAML default)', 'flux = 1e9'],\n"
             "):\n"
             "    img = out_i['images']['psf'][..., 0]\n"
-            "    ax.imshow(np.log10(img + 1e-3), cmap='inferno')\n"
+            "    vmax = float(img.max())\n"
+            "    im = ax.imshow(\n"
+            "        img, norm=LogNorm(vmin=max(vmax * 1e-4, 1e-3), vmax=vmax),\n"
+            "        cmap='inferno',\n"
+            "    )\n"
             "    ax.set_title(title)\n"
             "    ax.set_axis_off()\n"
-            "fig.suptitle('noisy_detector PSFs at varying photon flux (log10)')\n"
+            "    fig.colorbar(im, ax=ax, shrink=0.7, label='counts')\n"
+            "fig.suptitle('noisy_detector PSFs at varying photon flux')\n"
             "plt.tight_layout()\n"
             "plt.show()\n"
         ),
@@ -224,16 +255,19 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "    output_overrides={'psf': {'convolve_image': scene}}\n"
             ")\n"
             "\n"
-            "fig, axes = plt.subplots(1, 3, figsize=(12, 4))\n"
-            "axes[0].imshow(scene, cmap='inferno')\n"
-            "axes[0].set_title('input scene')\n"
-            "axes[0].set_axis_off()\n"
-            "axes[1].imshow(out_clean_scene['images']['psf'][..., 0], cmap='inferno')\n"
-            "axes[1].set_title('intensity → convolve_image')\n"
-            "axes[1].set_axis_off()\n"
-            "axes[2].imshow(out_noisy_scene['images']['psf'][..., 0], cmap='inferno')\n"
-            "axes[2].set_title('intensity → convolve → noisy_detector')\n"
-            "axes[2].set_axis_off()\n"
+            "fig, axes = plt.subplots(1, 3, figsize=(13, 4))\n"
+            "panels = [\n"
+            "    (scene, 'input scene', 'scene intensity'),\n"
+            "    (out_clean_scene['images']['psf'][..., 0],\n"
+            "     'intensity → convolve_image', 'intensity'),\n"
+            "    (out_noisy_scene['images']['psf'][..., 0],\n"
+            "     'intensity → convolve → noisy_detector', 'counts'),\n"
+            "]\n"
+            "for ax, (img, title, cb_label) in zip(axes, panels):\n"
+            "    im = ax.imshow(img, cmap='inferno')\n"
+            "    ax.set_title(title)\n"
+            "    ax.set_axis_off()\n"
+            "    fig.colorbar(im, ax=ax, shrink=0.7, label=cb_label)\n"
             "plt.tight_layout()\n"
             "plt.show()\n"
         ),
@@ -248,20 +282,35 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "setup against a Keck aperture (HCIPy built-in)."
         ),
         _code(
+            "import hcipy\n"
             "import numpy as np\n"
             "import matplotlib.pyplot as plt\n"
             "from telescope_sim import TelescopeSim\n"
             "\n"
             'sim = TelescopeSim.from_yaml("fixtures/configs/07_coro_original.yaml")\n'
-            "out = sim.sample()\n"
+            "out = sim.sample(meas_pupil_opd=True)\n"
             'psf = out["images"]["psf"][..., 0]\n'
             'print("psf shape:", psf.shape, " peak/min:", psf.max(), psf.min())\n'
+            "print('pupil_opd RMS (nm):', 1e9 * out['pupil_opd'].std())\n"
             "\n"
-            "plt.figure(figsize=(5, 5))\n"
-            'plt.imshow(psf, cmap="inferno")\n'
-            'plt.title("Vortex coronagraph @ rest (Keck aperture, charge=2)")\n'
-            'plt.axis("off")\n'
-            "plt.colorbar(shrink=0.8)\n"
+            "# Pupil OPD (left) is ~0 at rest — Keck aperture transmits perfectly\n"
+            "# in-band. Even so, the coronagraph nulls the on-axis PSF (right).\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(10, 4))\n"
+            "opd_nm = hcipy.Field(\n"
+            "    1e9 * np.asarray(out['pupil_opd']), out['pupil_opd'].grid\n"
+            ")\n"
+            "plt.sca(axes[0])\n"
+            "im0 = hcipy.imshow_field(\n"
+            "    opd_nm, mask=sim.aperture.field, cmap='RdBu_r'\n"
+            ")\n"
+            "axes[0].set_title('cumulative pupil OPD')\n"
+            "axes[0].set_axis_off()\n"
+            "fig.colorbar(im0, ax=axes[0], shrink=0.7, label='OPD [nm]')\n"
+            "im1 = axes[1].imshow(psf, cmap='inferno')\n"
+            "axes[1].set_title('Vortex coronagraph @ rest (Keck, charge=2)')\n"
+            "axes[1].set_axis_off()\n"
+            "fig.colorbar(im1, ax=axes[1], shrink=0.7, label='post-coro intensity')\n"
+            "plt.tight_layout()\n"
             "plt.show()\n"
         ),
     ],
@@ -276,30 +325,28 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         _code(
             "import numpy as np\n"
             "import matplotlib.pyplot as plt\n"
+            "from matplotlib.colors import LogNorm\n"
             "from telescope_sim import TelescopeSim\n"
+            "from telescope_sim.helpers.diagnostics import plot_opd_and_psfs\n"
             "\n"
             'sim = TelescopeSim.from_yaml("fixtures/configs/09_vampires_base.yaml")\n'
-            "out = sim.sample()\n"
-            'psf = out["images"]["psf"][..., 0]\n'
+            "out = sim.sample(meas_strehl=True, meas_pupil_opd=True)\n"
             "\n"
-            "fig, axes = plt.subplots(1, 2, figsize=(9, 4))\n"
-            'axes[0].imshow(sim.aperture.field.shaped, cmap="Greys_r")\n'
-            'axes[0].set_title("miles_pupil aperture")\n'
-            "axes[0].set_axis_off()\n"
-            'axes[1].imshow(np.log10(psf + 1e-10), cmap="inferno")\n'
-            'axes[1].set_title("PSF @ rest")\n'
-            "axes[1].set_axis_off()\n"
-            "plt.tight_layout()\n"
+            "plot_opd_and_psfs(sim, out, suptitle='VAMPIRES @ rest')\n"
             "plt.show()\n"
         ),
-        _md("Push a few Zernike modes and see the focal plane respond."),
+        _md(
+            "Push a few Zernike modes and see the focal plane respond — the OPD "
+            "panel makes the mode shape directly visible alongside the resulting PSF."
+        ),
         _code(
             "amps = np.zeros(10)\n"
             "amps[3] = 0.3   # one of the low-order modes\n"
-            'out = sim.sample(actuations={"zernike_dm": amps})\n'
-            'plt.imshow(np.log10(out["images"]["psf"][..., 0] + 1e-10), cmap="inferno")\n'
-            'plt.title("PSF with one Zernike mode pushed")\n'
-            'plt.axis("off")\n'
+            "out = sim.sample(\n"
+            '    actuations={"zernike_dm": amps},\n'
+            "    meas_strehl=True, meas_pupil_opd=True,\n"
+            ")\n"
+            "plot_opd_and_psfs(sim, out, suptitle='One Zernike mode pushed')\n"
             "plt.show()\n"
         ),
         _md(
@@ -333,19 +380,14 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "atmos.evolve_until(0.0)\n"
             "print('atmos exposes phase_for? ', hasattr(atmos, 'phase_for'))\n"
             "\n"
-            "out_clean = sim.sample(meas_strehl=True)\n"
-            "out_atmos = sim.sample(atmos=atmos, meas_strehl=True)\n"
+            "out_clean = sim.sample(meas_strehl=True, meas_pupil_opd=True)\n"
+            "out_atmos = sim.sample(atmos=atmos, meas_strehl=True, meas_pupil_opd=True)\n"
             'print(f\'Strehl no atmos:  {out_clean["strehls"]["filter1"]:.3f}\')\n'
             'print(f\'Strehl atmos on: {out_atmos["strehls"]["filter1"]:.3f}\')\n'
+            "print(f'atmos OPD RMS:   {1e9 * out_atmos[\"pupil_opd\"].std():.1f} nm')\n"
             "\n"
-            "fig, axes = plt.subplots(1, 2, figsize=(9, 4))\n"
-            "axes[0].imshow(np.log10(out_clean['images']['psf'][..., 0] + 1e-10), cmap='inferno')\n"
-            "axes[0].set_title(f\"no atmos — Strehl {out_clean['strehls']['filter1']:.3f}\")\n"
-            "axes[0].set_axis_off()\n"
-            "axes[1].imshow(np.log10(out_atmos['images']['psf'][..., 0] + 1e-10), cmap='inferno')\n"
-            "axes[1].set_title(f\"atmos applied — Strehl {out_atmos['strehls']['filter1']:.3f}\")\n"
-            "axes[1].set_axis_off()\n"
-            "plt.tight_layout()\n"
+            "plot_opd_and_psfs(sim, out_clean, suptitle='no atmos')\n"
+            "plot_opd_and_psfs(sim, out_atmos, suptitle='atmos applied')\n"
             "plt.show()\n"
         ),
         _md(
@@ -378,22 +420,19 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "fit_sim = build(SimConfig.model_validate(fit_cfg))\n"
             "\n"
             "atmos.evolve_until(0.0)  # reset the layer to the same frozen phase\n"
-            "out_corrected = fit_sim.sample(atmos=atmos, meas_strehl=True)\n"
+            "out_corrected = fit_sim.sample(\n"
+            "    atmos=atmos, meas_strehl=True, meas_pupil_opd=True,\n"
+            ")\n"
             "print(f\"Strehl with fit-role DM: {out_corrected['strehls']['filter1']:.3f}\")\n"
             "print('fit values shape:', out_corrected['actuations']['zernike_dm'].shape)\n"
+            "print(f'residual OPD RMS: {1e9 * out_corrected[\"pupil_opd\"].std():.1f} nm')\n"
             "\n"
-            "fig, axes = plt.subplots(1, 3, figsize=(12, 4))\n"
-            "for ax, out_i, title in zip(\n"
-            "    axes,\n"
-            "    [out_clean, out_atmos, out_corrected],\n"
-            "    [f\"no atmos — Strehl {out_clean['strehls']['filter1']:.3f}\",\n"
-            "     f\"atmos, no correction — Strehl {out_atmos['strehls']['filter1']:.3f}\",\n"
-            "     f\"atmos + fit-role DM — Strehl {out_corrected['strehls']['filter1']:.3f}\"],\n"
-            "):\n"
-            "    ax.imshow(np.log10(out_i['images']['psf'][..., 0] + 1e-10), cmap='inferno')\n"
-            "    ax.set_title(title)\n"
-            "    ax.set_axis_off()\n"
-            "plt.tight_layout()\n"
+            "# Three side-by-side OPD+PSF panels — clean / atmos uncorrected /\n"
+            "# atmos corrected. The OPD panels make the recovery story explicit:\n"
+            "# atmospheric phase in panel 2 nearly vanishes in panel 3.\n"
+            "plot_opd_and_psfs(sim, out_clean, suptitle='no atmos')\n"
+            "plot_opd_and_psfs(sim, out_atmos, suptitle='atmos, no correction')\n"
+            "plot_opd_and_psfs(fit_sim, out_corrected, suptitle='atmos + fit-role DM')\n"
             "plt.show()\n"
         ),
     ],
@@ -457,19 +496,40 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "        }\n"
             "    },\n"
             "}\n"
+            "import hcipy\n"
+            "from matplotlib.colors import LogNorm\n"
+            "\n"
             "sim = build(SimConfig.model_validate(config))\n"
-            "out = sim.sample()\n"
+            "out = sim.sample(meas_pupil_opd=True)\n"
             "stack = out['images']['x']   # (2, H, W, 1)\n"
             "focal_psf, mmf_psf = stack[0, ..., 0], stack[1, ..., 0]\n"
             "print('focal shape:', focal_psf.shape, ' mmf shape:', mmf_psf.shape)\n"
+            "print('pupil_opd RMS (nm):', 1e9 * out['pupil_opd'].std())\n"
             "\n"
-            "fig, axes = plt.subplots(1, 2, figsize=(9, 4))\n"
-            "axes[0].imshow(np.log10(focal_psf + 1e-12), cmap='inferno')\n"
-            "axes[0].set_title('focal-plane intensity')\n"
+            "# Custom layout because the fiber_dual tap stacks channels [focal, mmf]\n"
+            "# rather than per-filter — the package's plot_opd_and_psfs helper\n"
+            "# assumes the per-filter stack from the intensity tap.\n"
+            "fig, axes = plt.subplots(1, 3, figsize=(13, 4))\n"
+            "opd_nm = hcipy.Field(\n"
+            "    1e9 * np.asarray(out['pupil_opd']), out['pupil_opd'].grid\n"
+            ")\n"
+            "plt.sca(axes[0])\n"
+            "im0 = hcipy.imshow_field(\n"
+            "    opd_nm, mask=sim.aperture.field, cmap='RdBu_r'\n"
+            ")\n"
+            "axes[0].set_title('cumulative pupil OPD')\n"
             "axes[0].set_axis_off()\n"
-            "axes[1].imshow(np.log10(mmf_psf + 1e-12), cmap='inferno')\n"
-            "axes[1].set_title('multi-mode fiber coupling')\n"
-            "axes[1].set_axis_off()\n"
+            "fig.colorbar(im0, ax=axes[0], shrink=0.7, label='OPD [nm]')\n"
+            "for ax, img, title in [\n"
+            "    (axes[1], focal_psf, 'focal-plane intensity'),\n"
+            "    (axes[2], mmf_psf, 'multi-mode fiber coupling'),\n"
+            "]:\n"
+            "    vmax = float(img.max())\n"
+            "    vmin = vmax * 1e-8 if vmax > 0 else 1.0\n"
+            "    im = ax.imshow(img, norm=LogNorm(vmin=vmin, vmax=vmax), cmap='inferno')\n"
+            "    ax.set_title(title)\n"
+            "    ax.set_axis_off()\n"
+            "    fig.colorbar(im, ax=ax, shrink=0.7, label='intensity')\n"
             "plt.tight_layout()\n"
             "plt.show()\n"
         ),
@@ -711,15 +771,29 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "print(f'PTT OPD RMS:      {rms_ptt:.1f} nm')\n"
             "print(f'residual OPD RMS: {rms_res:.1f} nm')\n"
         ),
-        _md("And the focal-plane PSFs side-by-side."),
+        _md(
+            "And the focal-plane PSFs side-by-side. (Sharing one LogNorm across "
+            "both panels keeps the colorbars directly comparable.)"
+        ),
         _code(
-            "fig, axes = plt.subplots(1, 2, figsize=(9, 4))\n"
-            "axes[0].imshow(np.log10(out_ptt['images']['psf'][..., 0] + 1e-6), cmap='inferno')\n"
-            "axes[0].set_title(f\"PTT only — Strehl {out_ptt['strehls']['filter1']:.3f}\")\n"
-            "axes[0].set_axis_off()\n"
-            "axes[1].imshow(np.log10(out_corr['images']['psf'][..., 0] + 1e-6), cmap='inferno')\n"
-            "axes[1].set_title(f\"PTT + DM — Strehl {out_corr['strehls']['filter1']:.3f}\")\n"
-            "axes[1].set_axis_off()\n"
+            "from matplotlib.colors import LogNorm\n"
+            "\n"
+            "psf_ptt = out_ptt['images']['psf'][..., 0]\n"
+            "psf_corr = out_corr['images']['psf'][..., 0]\n"
+            "vmax = float(max(psf_ptt.max(), psf_corr.max()))\n"
+            "norm = LogNorm(vmin=vmax * 1e-6, vmax=vmax)\n"
+            "\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(10, 4))\n"
+            "for ax, img, title in [\n"
+            "    (axes[0], psf_ptt,\n"
+            "     f\"PTT only — Strehl {out_ptt['strehls']['filter1']:.3f}\"),\n"
+            "    (axes[1], psf_corr,\n"
+            "     f\"PTT + DM — Strehl {out_corr['strehls']['filter1']:.3f}\"),\n"
+            "]:\n"
+            "    im = ax.imshow(img, norm=norm, cmap='inferno')\n"
+            "    ax.set_title(title)\n"
+            "    ax.set_axis_off()\n"
+            "    fig.colorbar(im, ax=ax, shrink=0.7, label='intensity')\n"
             "plt.tight_layout()\n"
             "plt.show()\n"
         ),
@@ -777,15 +851,18 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "out_sqrt = pow_sim.sample()  # YAML default power=0.5\n"
             "out_qrt = pow_sim.sample(output_overrides={'psf': {'power': 0.25}})\n"
             "\n"
-            "fig, axes = plt.subplots(1, 3, figsize=(12, 4))\n"
+            "# Linear colormaps here — pow_scale itself is the dynamic-range\n"
+            "# compression, so log on top would hide what we're showing.\n"
+            "fig, axes = plt.subplots(1, 3, figsize=(13, 4))\n"
             "for ax, out_i, label in zip(\n"
             "    axes,\n"
             "    [out_lin, out_sqrt, out_qrt],\n"
             "    ['power=1.0 (linear)', 'power=0.5 (sqrt, YAML default)', 'power=0.25'],\n"
             "):\n"
-            "    ax.imshow(out_i['images']['psf'][..., 0], cmap='inferno')\n"
+            "    im = ax.imshow(out_i['images']['psf'][..., 0], cmap='inferno')\n"
             "    ax.set_title(label)\n"
             "    ax.set_axis_off()\n"
+            "    fig.colorbar(im, ax=ax, shrink=0.7, label='intensity^power')\n"
             "plt.tight_layout()\n"
             "plt.show()\n"
         ),

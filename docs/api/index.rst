@@ -88,6 +88,12 @@ Concrete implementations
 .. automodule:: telescope_sim.strehl
    :members:
 
+Helpers
+-------
+
+.. automodule:: telescope_sim.helpers.diagnostics
+   :members:
+
 Registry
 --------
 

@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import hcipy
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
@@ -124,6 +125,7 @@ class TelescopeSim:
         atmos: Any = None,
         output_overrides: Mapping[str, Mapping[str, Any]] | None = None,
         meas_strehl: bool = False,
+        meas_pupil_opd: bool = False,
     ) -> dict[str, Any]:
         """Run the optical chain and return a dict of outputs.
 
@@ -158,6 +160,14 @@ class TelescopeSim:
             per-sample state ignore the override.
         meas_strehl
             If True, includes a ``strehls`` entry in the returned dict.
+        meas_pupil_opd
+            If True, includes a ``pupil_opd`` entry in the returned dict:
+            the cumulative pupil-plane OPD seen at the back of the chain,
+            as an ``hcipy.Field`` on the simulator's pupil grid in meters.
+            Sums atmosphere (when ``atmos.phase_for`` is available) +
+            every DM-backed corrector's surface × 2. Companion to
+            ``sim.aperture.field`` for masked display via
+            ``hcipy.imshow_field(out["pupil_opd"], mask=sim.aperture.field)``.
 
         Returns
         -------
@@ -166,6 +176,9 @@ class TelescopeSim:
             ``actuations``   — dict of corrector_name → numpy array
                               (only for correctors with ``target=True``)
             ``strehls``      — present iff ``meas_strehl`` is True
+            ``pupil_opd``    — present iff ``meas_pupil_opd`` is True;
+                              ``hcipy.Field`` of cumulative pupil-plane OPD
+                              in meters
         """
         actuations = dict(actuations or {})
         output_overrides = dict(output_overrides or {})
@@ -319,6 +332,13 @@ class TelescopeSim:
                     continue
                 strehls[name] = est.compute(fp_results[name].intensity)
             result["strehls"] = strehls
+
+        # 7) Pupil-plane OPD readback. The cumulative-OPD stream computed
+        #    in step 2 already includes the atmosphere seed (when it
+        #    exposes phase_for) and every DM-backed corrector's surface×2,
+        #    so we just wrap it as an hcipy.Field for masked display.
+        if meas_pupil_opd:
+            result["pupil_opd"] = hcipy.Field(running_opd.copy(), self._c.pupil_grid)
 
         return result
 

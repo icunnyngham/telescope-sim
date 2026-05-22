@@ -70,6 +70,13 @@ Per-sample state
   the override and fall back to their YAML default. Processors with no
   per-sample state ignore the field.
 - ``meas_strehl`` — if true, return ``out["strehls"]``.
+- ``meas_pupil_opd`` — if true, return ``out["pupil_opd"]`` as an
+  ``hcipy.Field`` of cumulative pupil-plane OPD in meters (atmosphere
+  seed when ``phase_for`` is available, plus every DM-backed corrector's
+  surface × 2). Pair with ``sim.aperture.field`` for masked display via
+  ``hcipy.imshow_field(out["pupil_opd"], mask=sim.aperture.field)``; the
+  bundled :func:`telescope_sim.helpers.diagnostics.plot_opd_and_psfs`
+  uses this contract.
 
 Stages
 ------

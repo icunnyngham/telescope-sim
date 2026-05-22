@@ -40,6 +40,7 @@ validates the config with pydantic v2 and instantiates a
    tutorials/02_coronagraph_vortex
    tutorials/03_vampires_zernike
    tutorials/04_fiber_mmf
+   tutorials/05_custom_components
 
 
 .. toctree::

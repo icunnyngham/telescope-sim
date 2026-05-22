@@ -6,6 +6,57 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-05-22
+
+Small feature + tutorial-polish release. Adopts a uniform diagnostic
+convention across all tutorials: every PSF is shown next to the
+cumulative pupil-plane OPD that produced it, with colorbars on every
+panel and `matplotlib.colors.LogNorm` for log-intensity displays
+(colorbar labels carry raw intensity, not `log10`).
+
+### Added
+
+- `sim.sample(meas_pupil_opd=True)` returns `out["pupil_opd"]` as an
+  `hcipy.Field` of the cumulative pupil-plane OPD in meters. Sums the
+  atmosphere seed (when `atmos.phase_for` is available) and every
+  DM-backed corrector's surface × 2 — the same `running_opd` the
+  pipeline already computes internally for fit-role correctors, now
+  exposed for diagnostic display.
+- `telescope_sim.helpers.diagnostics.plot_opd_and_psfs(sim, out)` —
+  bundled plotting helper that lays out one OPD panel
+  (`hcipy.imshow_field(..., mask=sim.aperture.field)`) plus one PSF
+  panel per filter (`norm=LogNorm`), all with colorbars. Used across
+  tutorials 01–05.
+
+### Tutorial polish
+
+- Tutorial 01: surface the `elf_15seg` preset YAML directly (via
+  `importlib.resources`) so the two-filter config is visible; fix a
+  long-standing index bug that showed `psf[..., 0]` in both filter
+  panels (the 500 nm and 1 µm PSFs now actually differ in scale, as
+  λ/D dictates); show both filters under random PTT errors with the
+  same OPD reference.
+- Tutorial 02: add OPD panel + colorbar to the vortex coronagraph
+  at-rest demo.
+- Tutorial 03: OPD panels accompany the at-rest, Zernike-pushed,
+  atmosphere-on, and fit-role-corrected samples — the atmospheric
+  phase screen is directly visible alongside its PSF, and the
+  recovery story is explicit in the OPD residual.
+- Tutorial 04: OPD panel + LogNorm + colorbars on the fiber MMF demo
+  (uses an inline layout because `fiber_dual` stacks
+  `[focal, mmf]` rather than per-filter).
+- Tutorial 05: the PTT-only-vs-PTT+DM PSF comparison shares a single
+  `LogNorm` across both panels for direct colorbar comparability; the
+  `pow_scale` visualization keeps linear colormaps (pow_scale itself
+  is the dynamic-range compression) but now has colorbars.
+
+### Reference docs
+
+- `docs/configuration.rst`: document `meas_pupil_opd` alongside
+  `meas_strehl` in the per-sample-state section, with a pointer to
+  the diagnostics helper.
+- `docs/api/index.rst`: add `telescope_sim.helpers.diagnostics`.
+
 ## [2.0.1] - 2026-05-21
 
 Documentation polish release — no new package features. Catches the

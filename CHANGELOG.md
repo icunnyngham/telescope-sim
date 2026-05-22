@@ -6,7 +6,69 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [2.0.0a9] - 2026-05-20
+## [2.0.1] - 2026-05-21
+
+Documentation polish release — no new package features. Catches the
+reference docs and tutorials up to nine alpha releases worth of additions
+(`v2.0.0a1`–`v2.0.0a9`) and closes the remaining feature gaps from the
+v2.0.0a6 audit (Xinetics DM, `aprox_ptt_with_dm`, `pow_scale`) via
+extension-pattern tutorials rather than in-package features.
+
+### Reference docs
+
+- README: drop the alpha-series status line; add a "What's new since
+  v2.0.0" callout covering atmosphere, `noisy_detector`,
+  `convolve_image`, fit-role correctors, and `strehl_method`.
+- `docs/concepts.rst`: replace the stale "atmosphere on backlog"
+  section with the shipped per-sample `sim.sample(atmos=...)` contract.
+  Atmosphere is an external input — not a corrector. Document the
+  callable contract, optional `phase_for(lam)` coupling into the
+  cumulative-OPD stream for fit-role correctors, and reference-PSF
+  immunity by construction.
+- `src/telescope_sim/abc/corrector.py`: scrub the same
+  atmosphere-as-corrector framing from the Corrector ABC docstring;
+  replace with a `cumulative_phase_pre_self` example.
+- `docs/configuration.rst`: document `strehl_method` /
+  `strehl_core_rad`, a "Per-sample state" section covering `atmos` and
+  `output_overrides` on `sample()`, and the `noisy_detector` /
+  `convolve_image` post-processors (parameters, single-focal-plane
+  restriction, per-sample-override semantics, composition order).
+- `docs/api/index.rst`: add `telescope_sim.post.noisy_detector` and
+  `telescope_sim.post.convolve` module entries (autodoc was silently
+  skipping them since v2.0.0a7/a9).
+- `pyproject.toml`: add `atmosphere` to keywords.
+
+### Tutorials
+
+- Tutorial 01 (canonical mini-ELF) gains a "Detector noise" section
+  (`noisy_detector` post-processor + per-sample `int_phot_flux`
+  overrides at varying flux) and an "Extended-source imaging via
+  `convolve_image`" section (synthetic scene injected via
+  `output_overrides`, showing the `intensity → convolve → noisy_detector`
+  composition).
+- Tutorial 03 (VAMPIRES Zernike) gains an "Atmosphere as a per-sample
+  input" section: HCIPy `InfiniteAtmosphericLayer` injected via
+  `sim.sample(atmos=...)`, then a derived sim with the Zernike DM
+  flipped to `wavefront_role="fit"` +
+  `fit_source="cumulative_phase_pre_self"` recovering Strehl from
+  0.058 → 0.804 with no caller-provided actuations.
+- Tutorial 02 (coronagraph) and 04 (fiber MMF) unchanged — neither
+  composes meaningfully with the new features.
+
+### New tutorial
+
+- `docs/tutorials/05_custom_components.ipynb` — combined extension-
+  pattern walkthrough. Part 1 defines a custom `XineticsDM(Corrector)`
+  using `hcipy.make_xinetics_influence_functions` with the same
+  lstsq-on-aperture-masked-pixels `fit_surface` pattern as the
+  package's `ZernikeCorrector`, demonstrating the legacy
+  `aprox_ptt_with_dm` workflow via the existing fit-role machinery.
+  Part 2 defines a custom `PowScale(PostProcessor)` that re-creates
+  the legacy `extra_processing.pow_scale` field with per-sample
+  `power` overrides. Both classes use `@register(...)` at module
+  scope; the YAML loader picks them up by name.
+
+
 
 ### Added
 

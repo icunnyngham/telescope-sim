@@ -1,34 +1,11 @@
 # --- Reference / scratch material kept locally but never committed -----------
-# All of these are dev-time scratch areas — not part of the polished package.
-# They live alongside the repo for cross-reference and regression-suite
-# development, but their contents do not enter git history.
-
-# Local clone of HCIPy for cross-reference
-hcipy/
-
-# Local clone of the legacy v1.x canonical package
-TelescopeSim/
-
-# Forks of the legacy class kept for dev cross-reference
-variants/
-
-# Setup notebooks + configs scraped from prior projects
-test_fixtures/
-
-# Working design-rationale doc; superseded by docs/ when published
-DESIGN_CHALLENGES.md
-
-# AI-assistant context for refactor work
-CLAUDE.md
-
-# Working implementation notes (scratchpad; not part of polished package)
-IMPLEMENTATION_NOTES.md
-
-# Framework experiments / prototype components (local scratchpad)
-experiments/
+# This repo holds only the polished v2 package. Cross-reference material
+# (legacy v1, HCIPy clone, the 15 historical variants, scraped test fixtures,
+# experiments, working design/implementation notes) lives in the outer "lab"
+# directory one level up, never inside this repo.
 
 # Legacy-fixture capture scripts — dev-only tooling that imports legacy code
-# from local-only directories. Once a digest is captured and committed under
+# from outside this repo. Once a digest is captured and committed under
 # fixtures/runner/digests/, the capture script is no longer needed at runtime.
 fixtures/runner/capture_*.py
 fixtures/runner/run_legacy*.py

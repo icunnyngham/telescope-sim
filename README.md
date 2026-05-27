@@ -104,8 +104,8 @@ See [docs/concepts.rst](docs/concepts.rst) for the full discussion.
 conda env create -f envs/env-dev.yaml
 conda activate telescope-sim-dev
 
-# After creation, pip may have picked up a local hcipy/ clone; force-replace
-# with the PyPI build:
+# If pip discovers a sibling hcipy/ clone (developers often keep one in
+# ../external/hcipy/ for cross-reference), force-replace with the PyPI build:
 pip uninstall -y hcipy && pip install "hcipy>=0.6"
 
 # Install editable with dev extras

@@ -20,12 +20,12 @@ pytest
 - `envs/` — conda env YAMLs (current dev, plus era-matched envs for the
   regression suite)
 
-Several local-only directories are used as dev scratch space and are *not*
-committed to the repo (see `.gitignore`):
-
-- `hcipy/` — local clone of HCIPy for cross-reference. Clone from
-  https://github.com/ehpor/hcipy.git into this directory if you need it.
-- Any other ad-hoc reference material developers keep alongside the repo.
+Cross-reference material (HCIPy clone, the legacy v1 package, the 15
+historical variants, scraped test fixtures, working notes) is **not** stored
+inside this repo. Developers who need it typically keep it in a parent
+"lab" directory one level up — e.g. `../external/hcipy/`,
+`../external/TelescopeSim/`, `../variants/`, `../test_fixtures/`. None of
+those paths are referenced by the installable package or its tests.
 
 ## Adding a new optical stage
 

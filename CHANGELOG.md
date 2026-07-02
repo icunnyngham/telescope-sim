@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-01
+
+Feature release: the first new component kind since 2.0.0 — a generic
+actuator-grid deformable mirror, driven by raw per-actuator commands
+the way hardware DMs are, with mount/wiring misalignment simulated at
+construction.
+
 ### Added
 
 - `actuator_grid` corrector — a generic N×N actuator-grid deformable
@@ -54,6 +61,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   influence models, registry lookup, and a YAML round-trip through
   `TelescopeSim.from_yaml` + `sample(actuations=...)`
   (`tests/unit/data/actuator_grid_dm.yaml`).
+
+### Reference docs
+
+- `docs/configuration.rst`: `actuator_grid` field reference, including
+  the rotation sign convention and flip-then-rotate composition order.
+- `docs/api/index.rst`: `telescope_sim.correctors.actuator_grid` entry.
+- README: feature bullet; status line caught up (it still said v2.0.1).
+- New tutorial `docs/tutorials/06_actuator_grid_dm.ipynb` — SCExAO-scale
+  50×50 demo: poked actuators, the rotation/flip misalignment
+  visualization (a letter-F command rendered aligned / rotated /
+  rotated+flipped), readback round-trip, and a gaussian-vs-xinetics
+  influence comparison.
+- Tutorial 05 notes that Part 1's capability now ships in-package;
+  Part 1 remains the extension-pattern + fit-role reference.
+- CHANGELOG footer compare-links repaired (they had stopped at
+  v2.0.0a2).
+
+### Feature gaps (CLAUDE.md update)
+
+The Xinetics-DM row (previously "addressed via tutorial, no in-package
+implementation unless a fixture needs one") is superseded: a consumer
+materialized, and `actuator_grid` with `influence: xinetics` now covers
+the ELF/minielf Xinetics lineage natively. `aprox_ptt_with_dm` remains
+tutorial-addressed (fit-role machinery; `actuator_grid` deliberately
+omits `fit_surface` for now).
 
 ## [2.0.2] - 2026-05-22
 
@@ -845,6 +877,16 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a2...HEAD
-[2.0.0a2]: https://github.com/icunnyngham/telescope-sim/releases/tag/v2.0.0a2
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.2...v2.1.0
+[2.0.2]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.1...v2.0.2
+[2.0.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a9...v2.0.1
+[2.0.0a9]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a8...v2.0.0a9
+[2.0.0a8]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a7...v2.0.0a8
+[2.0.0a7]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a6...v2.0.0a7
+[2.0.0a6]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a5...v2.0.0a6
+[2.0.0a5]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a4...v2.0.0a5
+[2.0.0a4]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a3...v2.0.0a4
+[2.0.0a3]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a2...v2.0.0a3
+[2.0.0a2]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a1...v2.0.0a2
 [2.0.0a1]: https://github.com/icunnyngham/telescope-sim/releases/tag/v2.0.0a1

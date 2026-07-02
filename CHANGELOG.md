@@ -6,6 +6,55 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `actuator_grid` corrector — a generic N×N actuator-grid deformable
+  mirror with influence functions, the first in-package DM driven by
+  raw per-actuator commands (`ActuatorGridCorrector` in
+  `src/telescope_sim/correctors/actuator_grid.py`).
+  - `influence: gaussian | xinetics` selects the HCIPy
+    influence-function factory (`make_gaussian_influence_functions`
+    with configurable nearest-neighbour `crosstalk`, or
+    `make_xinetics_influence_functions` with the measured Xinetics
+    actuator shape).
+  - Misalignment is baked in at construction: `rotation_deg` rotates
+    the DM counterclockwise relative to the pupil (x right, y up) via
+    the factories' native `z_tilt`; `flip_x` / `flip_y` mirror the
+    command-array indexing (`fliplr` / `flipud`) before commands reach
+    the DM, mimicking a mirrored cable/mapping. Composition order is
+    flip-then-rotate. The `actuators` readback un-applies the flips so
+    callers always round-trip their own values.
+  - `set_actuators` accepts flat `(N²,)` or shaped `(N, N)` commands;
+    a shaped command indexes `cmd[iy, ix]` (axis 0 = y ascending,
+    axis 1 = x ascending, matching HCIPy's actuator ordering).
+    `actuate_scale` converts caller units to meters of surface.
+  - Deferred construction via `_bind_pupil_grid` (same pattern as
+    `zernike`); no loader special-case needed.
+  Example:
+  ```yaml
+  correctors:
+    dm:
+      type: actuator_grid
+      num_actuators: 50          # per side; n_actuators = 2500
+      actuator_pitch: 0.17       # meters, pupil-plane projected
+      influence: gaussian
+      rotation_deg: 3.5
+      actuate_scale: 1.0e-6
+  ```
+  `fit_surface` (fit-role / residual-fit participation) is deliberately
+  not implemented for this corrector yet.
+
+### Tests
+
+- `tests/unit/test_actuator_grid_corrector.py` — 16 tests pinning the
+  geometric conventions (poke localization, the +90° counterclockwise
+  rotation sign, both flips, flip-then-rotate composition), command
+  handling (flat/shaped equivalence, readback round-trip with and
+  without flips, size validation), `actuate_scale` linearity, both
+  influence models, registry lookup, and a YAML round-trip through
+  `TelescopeSim.from_yaml` + `sample(actuations=...)`
+  (`tests/unit/data/actuator_grid_dm.yaml`).
+
 ## [2.0.2] - 2026-05-22
 
 Small feature + tutorial-polish release. Adopts a uniform diagnostic

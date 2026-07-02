@@ -1,0 +1,52 @@
+# Test config for tests/unit/test_actuator_grid_corrector.py.
+#
+# Minimal pipeline exercising the actuator_grid corrector kind through the
+# YAML loader: clean circular aperture, one 8x8 gaussian-influence DM with a
+# small deliberate rotation, single-wavelength angular focal plane, raw
+# intensity output. Kept small so the fast suite stays fast; SCExAO-scale
+# parameters (50 actuators / 0.17 m pitch) are exercised in tutorial 06.
+
+pupil:
+  resolution: 64
+  extent: 1.05
+
+aperture:
+  type: external_pupil
+  module: hcipy
+  function: make_circular_aperture
+  mode: callable
+  kwargs:
+    diameter: 1.0
+  area: 0.7853981633974483  # pi * (0.5)^2
+
+correctors:
+  dm:
+    type: actuator_grid
+    num_actuators: 8
+    actuator_pitch: 0.125
+    influence: gaussian
+    rotation_deg: 3.5
+    actuate_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [dm]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 1.0e-5
+    focal_res: 64
+    fractional_bandwidth: 0.0
+    num_samples: 1
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing: []
+
+strehl_core_rad: null

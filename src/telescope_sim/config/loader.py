@@ -20,6 +20,7 @@ import yaml
 import telescope_sim.apertures.external_pupil  # noqa: F401
 import telescope_sim.apertures.segmented_circular  # noqa: F401
 import telescope_sim.coronagraphs  # noqa: F401
+import telescope_sim.correctors.actuator_grid  # noqa: F401
 import telescope_sim.correctors.segmented_ptt  # noqa: F401
 import telescope_sim.correctors.zernike  # noqa: F401
 import telescope_sim.focal_planes.angular  # noqa: F401

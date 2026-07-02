@@ -105,6 +105,16 @@ Correctors
     Fields: ``n_modes``, ``zernike_diameter``, ``starting_mode``,
     ``actuate_scale``.
 
+``actuator_grid``
+    Fields: ``num_actuators`` (per side), ``actuator_pitch``
+    (pupil-plane projected), ``influence`` (``gaussian`` |
+    ``xinetics``), ``crosstalk`` (gaussian only), ``rotation_deg``,
+    ``flip_x``, ``flip_y``, ``actuate_scale``. Actuator shape: flat
+    ``(N²,)`` or shaped ``(N, N)`` (axis 0 = y ascending, axis 1 = x
+    ascending). Positive ``rotation_deg`` rotates the DM
+    counterclockwise relative to the pupil; flips mirror the command
+    indexing before the rotation is applied (flip-then-rotate).
+
 Coronagraphs
 ~~~~~~~~~~~~
 

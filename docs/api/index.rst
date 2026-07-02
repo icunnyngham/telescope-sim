@@ -61,6 +61,9 @@ Concrete implementations
 .. automodule:: telescope_sim.correctors.zernike
    :members:
 
+.. automodule:: telescope_sim.correctors.actuator_grid
+   :members:
+
 .. automodule:: telescope_sim.coronagraphs.standard
    :members:
 

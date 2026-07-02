@@ -10,6 +10,10 @@
 fixtures/runner/capture_*.py
 fixtures/runner/run_legacy*.py
 
+# Local mount point (symlink) for the legacy fixture material referenced by
+# fixtures/configs/*.yaml — the material itself lives outside this repo.
+test_fixtures
+
 # Pickle files are not version-portable across HCIPy/Python releases
 *.pkl
 

@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Package maintainer contact email updated in project metadata.
+
+### Packaging
+
+- First release published to PyPI. Installs via `pip install telescope-sim`.
+
 ## [2.1.0] - 2026-07-01
 
 Feature release: the first new component kind since 2.0.0 — a generic

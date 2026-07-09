@@ -10,7 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
-    { name = "Ian Cunnyngham", email = "ian@morphoptic.com" },
+    { name = "Ian Cunnyngham", email = "rums_revue_9i@icloud.com" },
 ]
 keywords = [
     "astronomy",

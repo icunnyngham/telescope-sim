@@ -1,6 +1,6 @@
 # Contributing to telescope-sim
 
-This document is a stub during the v2.0 alpha. Expect it to fill in as we go.
+This document is a stub during the v2.x beta. Expect it to fill in as we go.
 
 ## Development setup
 

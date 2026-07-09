@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Development status classifier promoted from Alpha to Beta.
+- README: added an Installation section (`pip install telescope-sim`) and
+  refreshed the status line; docs and contributing notes updated now that
+  the package is published on PyPI.
+
 ## [2.1.1] - 2026-07-08
 
 Packaging release: `telescope-sim` is now available on PyPI —

@@ -4,7 +4,7 @@ Getting started
 Installation
 ------------
 
-From PyPI (once published)::
+From PyPI::
 
     pip install telescope-sim
 

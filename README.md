@@ -17,7 +17,7 @@ package.
 
 ## Status
 
-**v2.1.0.** The pipeline is wired end-to-end and reproduces 10
+**v2.1.1 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex and vector-vortex coronagraphs, angular
 and physical focal planes, and multi-mode-fiber dual outputs.
@@ -48,6 +48,15 @@ and physical focal planes, and multi-mode-fiber dual outputs.
 - **Extension tutorial** — `docs/tutorials/05_custom_components.ipynb`
   walks through writing your own `Corrector` and `PostProcessor` via the
   `@register(...)` registry.
+
+## Installation
+
+```bash
+pip install telescope-sim
+```
+
+Requires Python ≥ 3.10. See [Development](#development) below for an editable
+install with dev/doc extras.
 
 ## Quick start
 

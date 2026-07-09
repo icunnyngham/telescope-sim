@@ -6,13 +6,19 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.1.1] - 2026-07-08
+
+Packaging release: `telescope-sim` is now available on PyPI —
+`pip install telescope-sim`. No functional changes to the package.
+
 ### Changed
 
 - Package maintainer contact email updated in project metadata.
 
 ### Packaging
 
-- First release published to PyPI. Installs via `pip install telescope-sim`.
+- First release published to PyPI via automated trusted-publishing (OIDC)
+  from CI on tag push.
 
 ## [2.1.0] - 2026-07-01
 
@@ -885,7 +891,8 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.1...HEAD
+[2.1.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.1...v2.0.2
 [2.0.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.0a9...v2.0.1

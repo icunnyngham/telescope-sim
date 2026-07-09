@@ -88,6 +88,11 @@ telescope_sim = [
 [tool.setuptools_scm]
 write_to = "src/telescope_sim/_version.py"
 fallback_version = "0.0.0+unknown"
+# PyPI rejects PEP 440 local-version segments (the "+g<hash>" that scm adds
+# to untagged commits). Drop it so dev builds off untagged commits are
+# uploadable to (Test)PyPI. Clean tagged releases have no local segment, so
+# this is a no-op for real X.Y.Z releases.
+local_scheme = "no-local-version"
 
 [tool.pytest.ini_options]
 minversion = "7.0"

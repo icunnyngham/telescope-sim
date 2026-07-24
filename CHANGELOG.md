@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-07-23
+
+Feature release: the `actuator_grid` DM learns `fit_surface()`, so raw-command
+actuator-grid mirrors can now run in fit-role — in-pipeline "ideal AO,
+fitting-error-limited" modeling with no external fitting code. A cross-kind
+contract suite pins the `fit_surface` convention for every corrector that
+implements it.
+
 ### Added
 
 - `ActuatorGridCorrector.fit_surface()` — the `actuator_grid` corrector can
@@ -27,6 +35,12 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   - Fitted commands are returned in caller-facing indexing: `flip_x` /
     `flip_y` are un-applied, so `set_actuators(fit_surface(opd))`
     reproduces the fit under any configured misalignment.
+- Cross-kind `fit_surface` contract test suite
+  (`tests/unit/test_corrector_fit_contract.py`): every corrector kind
+  overriding `fit_surface` is held to the shared convention (matching sign,
+  surface→OPD factor of 2, caller-units scaling, piston rejection) by one
+  parametrized suite, with a registry guard that fails when a new
+  fit-capable kind lacks a contract case.
 
 ### Changed
 
@@ -920,7 +934,8 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.1...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.2...v2.1.0
 [2.0.2]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.1...v2.0.2

@@ -17,7 +17,7 @@ package.
 
 ## Status
 
-**v2.1.1 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
+**v2.2.0 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex and vector-vortex coronagraphs, angular
 and physical focal planes, and multi-mode-fiber dual outputs.
@@ -27,7 +27,11 @@ and physical focal planes, and multi-mode-fiber dual outputs.
 - **Actuator-grid DM** — the `actuator_grid` corrector: an N×N
   influence-function deformable mirror (gaussian or xinetics actuator
   shapes) driven by raw per-actuator commands, with DM misalignment
-  (rotation, mirrored command indexing) baked in at construction.
+  (rotation, mirrored command indexing) baked in at construction. Since
+  v2.2.0 it implements `fit_surface`, so it can run in fit-role: the DM
+  least-squares-fits any upstream OPD (imposed correctors or a
+  `sample(atmos=...)` screen) onto its influence basis and the pipeline
+  cancels it — ideal AO, fitting-error-limited.
 - **Atmosphere** — pass any HCIPy atmosphere (or any wf→wf callable) as
   `sim.sample(atmos=...)`. Atmospheres that expose `.phase_for(lam)` couple
   automatically into fit-role correctors for cancellation. The reference

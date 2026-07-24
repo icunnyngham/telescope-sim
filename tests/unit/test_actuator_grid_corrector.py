@@ -30,6 +30,7 @@ from telescope_sim.correctors.actuator_grid import ActuatorGridCorrector
 from telescope_sim.registry import lookup
 
 YAML_PATH = Path(__file__).parent / "data" / "actuator_grid_dm.yaml"
+FIT_YAML_PATH = Path(__file__).parent / "data" / "actuator_grid_fit_dm.yaml"
 
 N_ACT = 8
 PITCH = 1.0 / 8
@@ -223,6 +224,150 @@ def test_wrong_size_raises(pupil_grid, aper_field):
         c.set_actuators(np.zeros(N_ACT**2 - 1))
     with pytest.raises(ValueError, match="actuators"):
         c.set_actuators(np.zeros((N_ACT, N_ACT - 1)))
+
+
+# --- fit_surface -------------------------------------------------------------
+
+
+def _masked_mean_removed(opd, mask):
+    opd = np.asarray(opd, dtype=float).ravel()
+    out = opd.copy()
+    out[mask] -= opd[mask].mean()
+    return out
+
+
+def _low_order_screen(pupil_grid, rms_m=5e-8, seed=3):
+    """Smooth low-order OPD screen (meters, Z2-Z6) an 8x8 DM can fit well.
+
+    The Zernike disk is oversized (1.2 vs the 1.0 aperture) so the screen
+    stays smooth over every aperture-mask pixel — HCIPy hard-zeroes modes
+    outside their disk, and a step at the rim would be unfittable.
+    """
+    basis = hcipy.make_zernike_basis(5, 1.2, pupil_grid, starting_mode=2)
+    rng = np.random.default_rng(seed)
+    opd = sum(rng.normal() * np.asarray(m, dtype=float) for m in basis)
+    return opd * (rms_m / np.std(opd))
+
+
+def test_fit_surface_before_bind_raises():
+    c = ActuatorGridCorrector(N_ACT, PITCH)
+    with pytest.raises(RuntimeError):
+        c.fit_surface(np.zeros(64 * 64))
+
+
+def test_fit_surface_reproduces_opd(pupil_grid, aper_field):
+    """fit -> set_actuators reproduces the (mean-removed) input OPD over the aperture."""
+    c = _corrector(pupil_grid, aper_field)
+    mask = np.asarray(aper_field, dtype=float).ravel() > 0
+    opd = _low_order_screen(pupil_grid)
+
+    fit = c.fit_surface(opd)
+    c.set_actuators(fit)
+    reproduced = 2.0 * np.asarray(c._dm.surface, dtype=float)
+
+    target = _masked_mean_removed(opd, mask)
+    err = np.std((reproduced - target)[mask])
+    # Empirically ~12% rms: dominated by the aperture rim, where the mask
+    # extends past the outermost actuator ring and the gaussian influence
+    # basis rolls off. Interior fitting is at the percent level.
+    assert err < 0.2 * np.std(target[mask])
+
+
+def test_fit_surface_ignores_piston(pupil_grid, aper_field):
+    """A uniform OPD offset is never commanded (aperture-masked mean subtraction)."""
+    c = _corrector(pupil_grid, aper_field)
+    # Fitting the offset naively would command ~offset/(2*scale) per actuator;
+    # demand at least 9 orders of magnitude below that (roundoff territory).
+    naive = 3.7e-7 / (2.0 * c.actuate_scale)
+    fit = c.fit_surface(np.full(pupil_grid.size, 3.7e-7))
+    np.testing.assert_allclose(fit, 0.0, atol=1e-9 * naive)
+    # ...and an offset added to a structured screen changes nothing.
+    opd = _low_order_screen(pupil_grid)
+    np.testing.assert_allclose(c.fit_surface(opd + 2.2e-7), c.fit_surface(opd), atol=1e-9 * naive)
+
+
+def test_fit_surface_matches_reference_lstsq(pupil_grid, aper_field):
+    """The regularized solve agrees with a dense lstsq reference fit.
+
+    Coefficients of poorly-illuminated (edge) actuators are not unique, so
+    the comparison is on the reproduced surface over the aperture — the
+    quantity the pipeline consumes — not on raw coefficients.
+    """
+    c = _corrector(pupil_grid, aper_field, actuate_scale=1.0)
+    mask = np.asarray(aper_field, dtype=float).ravel() > 0
+    opd = _masked_mean_removed(_low_order_screen(pupil_grid), mask)
+
+    matrix = c._dm.influence_functions.transformation_matrix
+    dense = np.asarray(matrix.toarray() if hasattr(matrix, "toarray") else matrix)
+    ref_amps, _, _, _ = np.linalg.lstsq(dense[mask], opd[mask], rcond=None)
+
+    fit_amps = 2.0 * c.fit_surface(opd)  # DM-facing amplitudes (no flips, scale 1)
+    # Tikhonov vs minimum-norm differ only in the near-null space (dark edge
+    # actuators); the reproduced surfaces agree to well below a picometer.
+    ref_fit = dense[mask] @ ref_amps
+    got_fit = dense[mask] @ fit_amps
+    np.testing.assert_allclose(got_fit, ref_fit, rtol=0, atol=1e-12)
+
+
+def test_fit_surface_unapplies_flips(pupil_grid, aper_field):
+    """Fitted commands are caller-facing: flipped configs return flipped values
+    but reproduce the identical surface through set_actuators."""
+    opd = _low_order_screen(pupil_grid)
+    plain = _corrector(pupil_grid, aper_field)
+    flipped = _corrector(pupil_grid, aper_field, flip_x=True, flip_y=True)
+
+    fit_plain = plain.fit_surface(opd).reshape(N_ACT, N_ACT)
+    fit_flipped = flipped.fit_surface(opd).reshape(N_ACT, N_ACT)
+    np.testing.assert_allclose(fit_flipped, np.flipud(np.fliplr(fit_plain)), rtol=1e-10)
+
+    plain.set_actuators(fit_plain)
+    flipped.set_actuators(fit_flipped)
+    np.testing.assert_allclose(
+        np.asarray(flipped._dm.surface), np.asarray(plain._dm.surface), rtol=1e-10
+    )
+
+
+def test_yaml_fit_role_cancels_atmosphere():
+    """End-to-end: a fit-role actuator_grid DM corrects an atmosphere OPD.
+
+    Pins the full chain — atmosphere seeds the cumulative-OPD stream,
+    fit_surface matches it, the pipeline negates at the apply site — and
+    checks the pipeline's fitted state equals an independent fit_surface
+    call (pipeline wiring adds nothing beyond the documented negation).
+    """
+    from telescope_sim import TelescopeSim
+
+    class OPDScreen:
+        def __init__(self, opd_m):
+            self._opd = np.asarray(opd_m, dtype=float).ravel()
+
+        def phase_for(self, lam):
+            return 2.0 * np.pi * self._opd / float(lam)
+
+        def __call__(self, wf):
+            field = hcipy.Field(
+                np.asarray(wf.electric_field) * np.exp(1j * self.phase_for(wf.wavelength)),
+                wf.grid,
+            )
+            return hcipy.Wavefront(field, wf.wavelength)
+
+    sim = TelescopeSim.from_yaml(FIT_YAML_PATH)
+    grid = hcipy.make_pupil_grid(64, 1.05)
+    opd = _low_order_screen(grid, rms_m=5e-8)
+
+    out = sim.sample(atmos=OPDScreen(opd), meas_strehl=True)
+    corr = sim._c.correctors[0]
+
+    # Pipeline sets -fit_surface(cumulative pre-self OPD) on the corrector.
+    np.testing.assert_allclose(corr.actuators, -corr.fit_surface(opd), rtol=1e-10)
+
+    # The DM's correction shrinks the aperture-masked residual OPD (~12%
+    # rms survives, dominated by influence-basis rolloff at the rim).
+    mask = corr._aperture_mask
+    residual = _masked_mean_removed(opd, mask) + 2.0 * np.asarray(corr._dm.surface, dtype=float)
+    assert np.std(residual[mask]) < 0.2 * np.std(opd[mask] - opd[mask].mean())
+    # ~50nm rms in, few-nm residual out: strongly corrected PSF.
+    assert out["strehls"]["filter1"] > 0.95
 
 
 # --- YAML round-trip ---------------------------------------------------------

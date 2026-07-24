@@ -6,6 +6,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `ActuatorGridCorrector.fit_surface()` — the `actuator_grid` corrector can
+  now participate in fit-role and residual-fit configurations
+  (`wavefront_role: fit`, residual-fit target strategies), enabling
+  in-pipeline "ideal AO, fitting-error-limited" modeling: an upstream OPD
+  (imposed correctors, or an atmosphere passed via `sample(atmos=...)`) is
+  least-squares-fit onto the DM's influence basis and cancelled by the
+  pipeline, leaving the fitting-error residual to form the PSF.
+  - Aperture-masked regularized least squares on the (sparse) influence
+    matrix: the Gram matrix gets a tiny Tikhonov term (`1e-9 ×` mean
+    diagonal) so actuators with little or no aperture support stay pinned
+    near zero on sparse pupils; the factorized solver is cached after the
+    first fit.
+  - The aperture-masked mean of the input OPD is subtracted before the fit
+    (piston is never commanded), matching the `zernike` corrector's
+    convention — a global offset is unobservable, but the DM's imperfect
+    flat would print through as an observable ripple if fitted.
+  - Fitted commands are returned in caller-facing indexing: `flip_x` /
+    `flip_y` are un-applied, so `set_actuators(fit_surface(opd))`
+    reproduces the fit under any configured misalignment.
+
 ### Changed
 
 - Development status classifier promoted from Alpha to Beta.

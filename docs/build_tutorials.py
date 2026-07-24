@@ -553,10 +553,11 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "  field).\n\n"
             "> **Note** (v2.1.0): the capability Part 1 builds — an actuator-grid\n"
             "> DM with Xinetics influence functions — now ships in-package as the\n"
-            "> `actuator_grid` corrector (tutorial 6). Part 1 remains the\n"
-            "> reference walkthrough for the extension pattern itself and for\n"
-            "> fit-role `fit_surface` wiring, which `actuator_grid` deliberately\n"
-            "> omits.\n\n"
+            "> `actuator_grid` corrector (tutorial 6), which since v2.2.0 also\n"
+            "> implements `fit_surface` (aperture-masked regularized least squares\n"
+            "> onto the influence basis), so it can run fit-role / residual-fit\n"
+            "> configurations directly. Part 1 remains the reference walkthrough\n"
+            "> for the extension pattern itself.\n\n"
             "Both follow the same recipe: write a class, decorate, reference by "
             "name. The same pattern extends to all six pluggable kinds."
         ),
@@ -1091,9 +1092,14 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "- Building the influence basis dominates sim construction (a few\n"
             "  seconds for 50×50 on a 256² grid); per-sample cost is\n"
             "  sub-millisecond. Build once, sample many times.\n"
-            "- `fit_surface` (fit-role / residual-fit participation) is\n"
-            "  deliberately not implemented for this corrector — see tutorial 5\n"
-            "  for a custom corrector that adds it.\n"
+            "- `fit_surface` (since v2.2.0) enables fit-role / residual-fit\n"
+            "  participation: the DM least-squares-fits any upstream OPD (an\n"
+            "  imposed corrector, or an atmosphere passed via\n"
+            "  `sample(atmos=...)`) onto its influence basis and the pipeline\n"
+            "  cancels it — ideal AO, fitting-error-limited. The fit is\n"
+            "  aperture-masked and mean-subtracted (piston is never\n"
+            "  commanded), with a tiny Tikhonov term pinning unilluminated\n"
+            "  actuators near zero.\n"
         ),
     ],
 }

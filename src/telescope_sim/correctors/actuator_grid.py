@@ -41,6 +41,8 @@ from typing import Any
 
 import hcipy
 import numpy as np
+import scipy.linalg
+import scipy.sparse
 from numpy.typing import ArrayLike, NDArray
 
 from telescope_sim.abc import Corrector
@@ -124,8 +126,12 @@ class ActuatorGridCorrector(Corrector):
 
         # Populated by :meth:`_bind_pupil_grid` (called by the pipeline loader)
         self._dm: Any | None = None
+        self._aperture_mask: NDArray[np.bool_] | None = None
+        # Lazy fit-solver state, built on first fit_surface() call
+        self._fit_matrix: Any | None = None
+        self._fit_cho: Any | None = None
 
-    def _bind_pupil_grid(self, pupil_grid: Any, aperture_field: Any) -> None:  # noqa: ARG002
+    def _bind_pupil_grid(self, pupil_grid: Any, aperture_field: Any) -> None:
         """Build the influence functions + HCIPy DM on a given pupil grid.
 
         Both HCIPy factories place actuators on an internal unrotated
@@ -143,6 +149,11 @@ class ActuatorGridCorrector(Corrector):
             **factory_kwargs,
         )
         self._dm = hcipy.DeformableMirror(basis)
+        # Aperture mask for fit_surface: fit only over transmitting pixels
+        # (matches the ZernikeCorrector convention).
+        self._aperture_mask = np.asarray(aperture_field, dtype=float).ravel() > 0
+        self._fit_matrix = None
+        self._fit_cho = None
 
     def _shape_command(self, values: ArrayLike) -> NDArray[np.floating]:
         """Coerce a flat ``(N²,)`` or shaped ``(N, N)`` command to ``(N, N)``."""
@@ -179,6 +190,69 @@ class ActuatorGridCorrector(Corrector):
     def flatten(self) -> None:
         if self._dm is not None:
             self._dm.actuators = np.zeros(self.n_actuators)
+
+    def _build_fit_solver(self) -> None:
+        """Cache the aperture-masked influence matrix + normal-equations factor.
+
+        The influence basis is sparse (HCIPy truncates pokes at a cutoff
+        radius), so the masked matrix stays sparse and the dense work is
+        confined to the (N², N²) Gram matrix. On sparse pupils many grid
+        actuators have little or no support inside the aperture, making
+        the Gram matrix singular; a tiny Tikhonov term (1e-9 x mean
+        diagonal) keeps the factorization stable and pins unilluminated
+        actuators near zero instead of letting them blow up.
+        """
+        matrix = self._dm.influence_functions.transformation_matrix
+        masked = matrix[np.flatnonzero(self._aperture_mask)]
+        gram = masked.T @ masked
+        if scipy.sparse.issparse(gram):
+            gram = gram.toarray()
+        gram = np.asarray(gram, dtype=float)
+        n = gram.shape[0]
+        gram[np.diag_indices(n)] += 1e-9 * np.trace(gram) / n
+        self._fit_matrix = masked
+        self._fit_cho = scipy.linalg.cho_factor(gram)
+
+    def fit_surface(self, phase: NDArray[np.floating]) -> NDArray[np.floating]:
+        """Least-squares-project a pupil-plane OPD onto the influence basis.
+
+        Input is OPD in meters (path-length); output is caller-facing
+        actuator commands that *reproduce* that OPD as this DM's surface
+        contribution (matching, not cancellation — see
+        :meth:`Corrector.fit_surface` for the convention). The fit is an
+        aperture-masked regularized least squares onto the (rotated)
+        influence functions; command flips are un-applied on the way out,
+        so ``set_actuators(fit_surface(opd))`` reproduces the fit
+        regardless of the configured misalignment.
+
+        The ``/ 2.0`` is the surface→OPD round-trip factor: setting
+        actuator value ``v`` produces surface ``v * actuate_scale`` but
+        contributes ``2 * v * actuate_scale`` to the OPD.
+
+        The aperture-masked mean of the input is subtracted before the
+        fit. A uniform OPD offset is unobservable in the PSF, and unlike
+        a global phase the DM's *approximation* of one is not: the
+        influence basis only holds a flat to within a print-through
+        ripple, so fitting the mean would leak ``mean x ripple`` into the
+        corrected wavefront and pollute residual-fit ML targets with an
+        arbitrary common-mode term. Piston is therefore never commanded.
+        """
+        if self._dm is None or self._aperture_mask is None:
+            raise RuntimeError("fit_surface() before _bind_pupil_grid()")
+        if self._fit_cho is None:
+            self._build_fit_solver()
+        phase = np.asarray(phase, dtype=float).ravel()
+        rhs = phase[self._aperture_mask]
+        rhs = rhs - rhs.mean()
+        amps = scipy.linalg.cho_solve(self._fit_cho, np.asarray(self._fit_matrix.T @ rhs).ravel())
+        shaped = amps.reshape(self.num_actuators, self.num_actuators)
+        # Un-apply the command flips (as in the `actuators` readback) so the
+        # returned values are in the caller's command indexing.
+        if self.flip_x:
+            shaped = np.fliplr(shaped)
+        if self.flip_y:
+            shaped = np.flipud(shaped)
+        return shaped.reshape(-1) / (2.0 * self.actuate_scale)
 
     @property
     def n_actuators(self) -> int:

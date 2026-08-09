@@ -6,6 +6,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Optional dLux/JAX compute backend for focal-plane propagation, selected
+  via `backend: dlux` in the config YAML or the new `backend=` keyword on
+  `TelescopeSim.from_yaml()` / `from_preset()`. The pipeline, apertures,
+  correctors, output taps, and post-processors are shared with the default
+  hcipy backend; wavefront propagation runs as a jitted, wavelength-vmapped
+  matrix Fourier transform on JAX, composing the corrector chain as summed
+  pupil-plane OPD. Verified to reproduce hcipy-backend PSFs to
+  ~1e-15 (max abs, normalized) on the packaged preset. Install with
+  `pip install telescope-sim[dlux]`.
+  - Components with no dLux path are rejected at config time with clear
+    errors: the `fiber_dual` output tap, `vortex` / `vector_vortex`
+    coronagraphs, correctors exposing no mirror surface, and
+    `sample(atmos=...)` objects lacking `.phase_for`.
+  - The registry gains an additive per-backend overlay:
+    `@register(kind, name, backend="dlux")` shadows the backend-agnostic
+    registration for that backend only; existing registrations and custom
+    user components are unaffected.
+
 ## [2.2.0] - 2026-07-23
 
 Feature release: the `actuator_grid` DM learns `fit_surface()`, so raw-command

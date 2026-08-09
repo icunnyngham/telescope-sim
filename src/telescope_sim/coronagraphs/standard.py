@@ -56,6 +56,7 @@ class VortexCoronagraphImpl(Coronagraph):
     """
 
     name = "vortex"
+    supported_backends = frozenset({"hcipy"})
 
     def __init__(self, charge: int = 2, lyot: dict | None = None) -> None:
         self.charge = int(charge)
@@ -77,6 +78,7 @@ class VectorVortexCoronagraphImpl(Coronagraph):
     """HCIPy VectorVortexCoronagraph at a configurable charge."""
 
     name = "vector_vortex"
+    supported_backends = frozenset({"hcipy"})
 
     def __init__(self, charge: int = 4, lyot: dict | None = None) -> None:
         self.charge = int(charge)

@@ -65,6 +65,7 @@ class SimConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
+    backend: Literal["hcipy", "dlux"] = "hcipy"
     pupil: PupilConfig
     aperture: StageConfig
     correctors: dict[str, CorrectorConfig] = Field(default_factory=dict)

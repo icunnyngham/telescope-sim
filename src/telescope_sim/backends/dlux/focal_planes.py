@@ -1,0 +1,133 @@
+"""dlux-backend focal planes — JAX propagation behind the standard interfaces.
+
+These subclass the hcipy focal planes so construction parameters, grid
+metadata (``lam_setup``), reference-PSF bookkeeping, and Strehl/detector
+integration are identical; only ``_propagate_chain`` differs. Instead of
+walking correctors with per-wavelength ``apply()`` calls, the corrector
+chain is composed as a single summed pupil-plane OPD (every corrector is a
+thin phase screen, and thin phase screens commute) and propagated in one
+jitted, wavelength-vmapped matrix Fourier transform.
+
+Consequences vs the hcipy backend:
+
+- ``FocalPlaneResult.wavefronts`` is empty (no per-wavelength hcipy
+  wavefront objects exist on this path); taps that consume them
+  (``fiber_dual``) are gated off at config time.
+- ``atmos`` must expose ``.phase_for(lam)`` (OPD-defined screens); a plain
+  wavefront-callable cannot be applied to a summed-OPD propagation.
+- A configured coronagraph (other than ``identity``) is rejected at config
+  time; this module double-checks at sample time.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+
+from telescope_sim.backends.dlux.propagation import FraunhoferMFT
+from telescope_sim.focal_planes.angular import AngularFocalPlane
+from telescope_sim.focal_planes.physical import FocalPlaneResult, PhysicalFocalPlane
+from telescope_sim.pipeline import _mirror_of
+from telescope_sim.registry import register
+
+
+def _chain_opd(
+    corrector_chain: list[Any],
+    atmos: Any | None,
+    n_pix: int,
+) -> np.ndarray:
+    """Total pupil-plane OPD (meters, flat) for the current chain state.
+
+    Mirrors the pipeline's cumulative-OPD bookkeeping: atmosphere seed
+    (via ``phase_for``) plus 2 × surface per mirror-backed corrector.
+    """
+    opd = np.zeros(n_pix, dtype=np.float64)
+    if atmos is not None:
+        if not hasattr(atmos, "phase_for"):
+            raise NotImplementedError(
+                "the 'dlux' backend requires an atmosphere exposing "
+                ".phase_for(lam) (an OPD-defined phase screen); arbitrary "
+                "wavefront callables are hcipy-backend only."
+            )
+        opd += np.asarray(atmos.phase_for(1.0), dtype=np.float64) / (2.0 * np.pi)
+    for c in corrector_chain:
+        mirror = _mirror_of(c)
+        if mirror is None:
+            raise ValueError(
+                f"corrector {getattr(c, 'name', c)!r} exposes no mirror "
+                "surface; it cannot run on the 'dlux' backend."
+            )
+        opd += 2.0 * np.asarray(mirror.surface, dtype=np.float64)
+    return opd
+
+
+def _check_coronagraph(coronagraph: Any | None) -> None:
+    if coronagraph is not None and getattr(coronagraph, "name", None) != "identity":
+        raise NotImplementedError(
+            f"coronagraph {getattr(coronagraph, 'name', coronagraph)!r} is "
+            "not supported on the 'dlux' backend."
+        )
+
+
+class _DLuxPropagationMixin:
+    """Shared dlux propagation path for the angular/physical focal planes."""
+
+    _mft: FraunhoferMFT | None = None
+    _amplitude: np.ndarray | None = None
+
+    def _build_mft(self, *, focal_length: float, amplitude_scale: float = 1.0) -> None:
+        setup = self.lam_setup
+        self._mft = FraunhoferMFT(
+            self._pupil_grid,
+            setup.focal_grid,
+            setup.filter_lams,
+            focal_length=focal_length,
+        )
+        self._amplitude = np.asarray(self._aperture_field, dtype=np.float64) * amplitude_scale
+
+    def _propagate_chain(
+        self,
+        corrector_chain: list[Any],
+        *,
+        coronagraph: Any | None = None,
+        atmos: Any | None = None,
+    ) -> FocalPlaneResult:
+        assert self._mft is not None and self._amplitude is not None
+        _check_coronagraph(coronagraph)
+        opd = _chain_opd(corrector_chain, atmos, self._amplitude.size)
+        intensity = self._mft.summed_intensity(self._amplitude, opd)
+        return FocalPlaneResult(intensity=intensity, wavefronts=[])
+
+
+@register("focal_plane", "angular", backend="dlux")
+class DLuxAngularFocalPlane(_DLuxPropagationMixin, AngularFocalPlane):
+    """Angular focal plane propagated on JAX (see module docstring)."""
+
+    def build(self, pupil_grid: Any, aperture_field: Any) -> None:
+        super().build(pupil_grid, aperture_field)
+        # Angular convention: focal coordinates in radians, focal_length=1.
+        self._build_mft(focal_length=1.0)
+
+
+@register("focal_plane", "physical", backend="dlux")
+class DLuxPhysicalFocalPlane(_DLuxPropagationMixin, PhysicalFocalPlane):
+    """Physical focal plane propagated on JAX (see module docstring)."""
+
+    def build(self, pupil_grid: Any, aperture_field: Any) -> None:
+        super().build(pupil_grid, aperture_field)
+        self._pupil_grid = pupil_grid
+        self._aperture_field = aperture_field
+        # wavefront_total_power rescales each monochromatic wavefront so its
+        # integrated power equals the requested value — equivalent to
+        # scaling the (λ-independent) aperture amplitude once.
+        scale = 1.0
+        if self.wavefront_total_power is not None:
+            aper = np.asarray(aperture_field, dtype=np.float64)
+            weights = np.atleast_1d(np.asarray(pupil_grid.weights, dtype=np.float64))
+            current = float((np.abs(aper) ** 2 * weights).sum())
+            scale = float(np.sqrt(self.wavefront_total_power / current))
+        self._build_mft(focal_length=self.focal_length, amplitude_scale=scale)
+
+
+__all__ = ["DLuxAngularFocalPlane", "DLuxPhysicalFocalPlane"]

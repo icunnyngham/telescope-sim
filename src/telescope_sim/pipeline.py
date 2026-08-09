@@ -87,20 +87,24 @@ class TelescopeSim:
         return cls(components)
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> TelescopeSim:
-        """Load a configuration YAML and build the pipeline."""
+    def from_yaml(cls, path: str | Path, *, backend: str | None = None) -> TelescopeSim:
+        """Load a configuration YAML and build the pipeline.
+
+        ``backend`` overrides the YAML's ``backend`` field (``"hcipy"`` /
+        ``"dlux"``) so one config can be run against either compute backend.
+        """
         # Deferred to avoid the loader → pipeline import cycle.
         from telescope_sim.config.loader import build_from_yaml  # noqa: PLC0415
 
-        return build_from_yaml(path)
+        return build_from_yaml(path, backend=backend)
 
     @classmethod
-    def from_preset(cls, name: str) -> TelescopeSim:
+    def from_preset(cls, name: str, *, backend: str | None = None) -> TelescopeSim:
         """Load a packaged preset by name."""
         # Deferred to avoid the loader → pipeline import cycle.
         from telescope_sim.config.loader import build_from_preset  # noqa: PLC0415
 
-        return build_from_preset(name)
+        return build_from_preset(name, backend=backend)
 
     # --- Convenience accessors ---------------------------------------------
 

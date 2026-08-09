@@ -35,6 +35,10 @@ class FiberDualOutputTap(OutputTap):
         Output name (key in ``sample()['images']``).
     """
 
+    # Couples per-wavelength hcipy focal wavefronts into an hcipy fiber
+    # model; there is no dlux equivalent of this path yet.
+    supported_backends = frozenset({"hcipy"})
+
     def __init__(
         self,
         focal_plane_name: str,

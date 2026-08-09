@@ -39,6 +39,7 @@ from telescope_sim.abc import (
 from telescope_sim.config.schema import SimConfig, StageConfig
 from telescope_sim.pipeline import (
     TelescopeSim,
+    _mirror_of,
     _OutputSpec,
     _PipelineComponents,
 )
@@ -46,14 +47,32 @@ from telescope_sim.registry import lookup
 from telescope_sim.strehl import StrehlEstimator, build_strehl_estimator
 
 
-def _instantiate(kind: str, cfg: StageConfig | dict | str, **extras: Any) -> Any:
+def _lookup_for_backend(kind: str, name: str, backend: str) -> type:
+    """Backend-aware registry lookup + supported-backends gate.
+
+    Backend-specific registrations shadow agnostic ones. An agnostic
+    implementation may declare a ``supported_backends`` class attribute
+    (iterable of backend names) to opt out of backends it cannot serve;
+    resolving it for an unsupported backend is a config error.
+    """
+    cls = lookup(kind, name, backend=backend)
+    supported = getattr(cls, "supported_backends", None)
+    if supported is not None and backend not in supported:
+        raise ValueError(
+            f"{kind}/{name} is not supported on the {backend!r} backend "
+            f"(supports: {sorted(supported)})."
+        )
+    return cls
+
+
+def _instantiate(kind: str, cfg: StageConfig | dict | str, *, backend: str, **extras: Any) -> Any:
     """Resolve and construct a registered implementation from a stage config."""
     if isinstance(cfg, str):
-        cls = lookup(kind, cfg)
+        cls = _lookup_for_backend(kind, cfg, backend)
         return cls(**extras)
     payload = cfg.model_dump() if isinstance(cfg, StageConfig) else dict(cfg)
     type_name = payload.pop("type")
-    cls = lookup(kind, type_name)
+    cls = _lookup_for_backend(kind, type_name, backend)
     return cls(**payload, **extras)
 
 
@@ -64,13 +83,29 @@ def load_yaml(path: str | Path) -> SimConfig:
     return SimConfig.model_validate(data)
 
 
-def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-driven assembly: per-stage branches)
-    """Instantiate a TelescopeSim from a validated config."""
+def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-driven assembly: per-stage branches)
+    """Instantiate a TelescopeSim from a validated config.
+
+    ``backend`` overrides the config's ``backend`` field when given
+    (useful for running one YAML against both compute backends).
+    """
+    backend = backend or config.backend
+    if backend == "dlux":
+        # Populate the dlux backend-registry overlay (and fail with an
+        # actionable message when the optional dependency is missing).
+        try:
+            import telescope_sim.backends.dlux  # noqa: F401, PLC0415
+        except ImportError as exc:
+            raise ImportError(
+                "backend='dlux' requires the optional dLux/JAX dependencies; "
+                "install with: pip install 'telescope-sim[dlux]'"
+            ) from exc
+
     # 1) Pupil grid
     pupil_grid = hcipy.make_pupil_grid(config.pupil.resolution, config.pupil.extent)
 
     # 2) Aperture
-    aperture_impl: Aperture = _instantiate("aperture", config.aperture)
+    aperture_impl: Aperture = _instantiate("aperture", config.aperture, backend=backend)
     aperture_result = aperture_impl.build(pupil_grid)
 
     # 3) Correctors
@@ -86,7 +121,7 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
             "target": payload.pop("target"),
         }
         type_name = payload.pop("type")
-        cls = lookup("corrector", type_name)
+        cls = _lookup_for_backend("corrector", type_name, backend)
 
         # Some correctors need the aperture's segments/segment_coords at
         # construction time; supply them by introspection here. Others just
@@ -117,13 +152,26 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
         )
     corrector_chain = [correctors_by_name[n] for n in chain_names]
 
+    # The dlux backend composes correctors by summing their mirror-surface
+    # OPD contributions (thin phase screens commute), so every corrector in
+    # the chain must expose a DM-like surface. Correctors applying arbitrary
+    # wavefront transforms are hcipy-only.
+    if backend == "dlux":
+        non_opd = [c.name for c in corrector_chain if _mirror_of(c) is None]
+        if non_opd:
+            raise ValueError(
+                f"correctors {non_opd} expose no mirror surface and cannot "
+                "run on the 'dlux' backend (which composes correctors as "
+                "summed pupil-plane OPD)."
+            )
+
     # 4) Coronagraph (optional). Built before the focal planes so that the
     #    reference-PSF generation can deliberately bypass it.
     coronagraph: Coronagraph | None = None
     if config.coronagraph is not None:
         coro_payload = config.coronagraph.model_dump()
         coro_type = coro_payload.pop("type")
-        coro_cls = lookup("coronagraph", coro_type)
+        coro_cls = _lookup_for_backend("coronagraph", coro_type, backend)
         coronagraph = coro_cls(**coro_payload)
         if hasattr(coronagraph, "_bind_pupil_grid"):
             coronagraph._bind_pupil_grid(pupil_grid)
@@ -137,7 +185,7 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
     for fp_name, fp_cfg in config.focal_planes.items():
         payload = fp_cfg.model_dump()
         type_name = payload.pop("type")
-        cls = lookup("focal_plane", type_name)
+        cls = _lookup_for_backend("focal_plane", type_name, backend)
         fp = cls(name=fp_name, **payload)
         fp.build(pupil_grid, aperture_result.field)
         for c in corrector_chain:
@@ -161,7 +209,7 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
         # Tap
         tap_payload = out_cfg.tap.model_dump()
         tap_type = tap_payload.pop("type")
-        tap_cls = lookup("output_tap", tap_type)
+        tap_cls = _lookup_for_backend("output_tap", tap_type, backend)
         # The intensity / fiber_dual taps take focal_plane_names from the
         # YAML's `focal_planes` field.
         if "focal_planes" in tap_payload:
@@ -171,7 +219,7 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
         # Post-processors
         pps: list[PostProcessor] = []
         for pp_cfg in out_cfg.post_processing:
-            pps.append(_instantiate("post_processor", pp_cfg))
+            pps.append(_instantiate("post_processor", pp_cfg, backend=backend))
 
         # Track which focal planes this output references (for ctx-building)
         fp_names = list(
@@ -210,12 +258,12 @@ def build(config: SimConfig) -> TelescopeSim:  # noqa: PLR0912,PLR0915  (config-
     return TelescopeSim.from_components(components)
 
 
-def build_from_yaml(path: str | Path) -> TelescopeSim:
+def build_from_yaml(path: str | Path, *, backend: str | None = None) -> TelescopeSim:
     """Convenience: load a YAML file and build the pipeline in one step."""
-    return build(load_yaml(path))
+    return build(load_yaml(path), backend=backend)
 
 
-def build_from_preset(name: str) -> TelescopeSim:
+def build_from_preset(name: str, *, backend: str | None = None) -> TelescopeSim:
     """Resolve a preset name to a packaged YAML and build the pipeline."""
     preset_path = Path(__file__).resolve().parent.parent / "presets" / f"{name}.yaml"
     if not preset_path.is_file():
@@ -223,7 +271,7 @@ def build_from_preset(name: str) -> TelescopeSim:
         presets_dir = preset_path.parent
         available = sorted(p.stem for p in presets_dir.glob("*.yaml"))
         raise ValueError(f"unknown preset {name!r}; available: {available or '(none)'}")
-    return build_from_yaml(preset_path)
+    return build_from_yaml(preset_path, backend=backend)
 
 
 __all__ = ["load_yaml", "build", "build_from_yaml", "build_from_preset"]

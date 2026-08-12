@@ -90,15 +90,15 @@ def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # 
     (useful for running one YAML against both compute backends).
     """
     backend = backend or config.backend
-    if backend == "dlux":
-        # Populate the dlux backend-registry overlay (and fail with an
+    if backend == "jax":
+        # Populate the jax backend-registry overlay (and fail with an
         # actionable message when the optional dependency is missing).
         try:
-            import telescope_sim.backends.dlux  # noqa: F401, PLC0415
+            import telescope_sim.backends.jax  # noqa: F401, PLC0415
         except ImportError as exc:
             raise ImportError(
-                "backend='dlux' requires the optional dLux/JAX dependencies; "
-                "install with: pip install 'telescope-sim[dlux]'"
+                "backend='jax' requires the optional JAX dependency; "
+                "install with: pip install 'telescope-sim[jax]'"
             ) from exc
 
     # 1) Pupil grid
@@ -152,16 +152,16 @@ def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # 
         )
     corrector_chain = [correctors_by_name[n] for n in chain_names]
 
-    # The dlux backend composes correctors by summing their mirror-surface
+    # The jax backend composes correctors by summing their mirror-surface
     # OPD contributions (thin phase screens commute), so every corrector in
     # the chain must expose a DM-like surface. Correctors applying arbitrary
     # wavefront transforms are hcipy-only.
-    if backend == "dlux":
+    if backend == "jax":
         non_opd = [c.name for c in corrector_chain if _mirror_of(c) is None]
         if non_opd:
             raise ValueError(
                 f"correctors {non_opd} expose no mirror surface and cannot "
-                "run on the 'dlux' backend (which composes correctors as "
+                "run on the 'jax' backend (which composes correctors as "
                 "summed pupil-plane OPD)."
             )
 

@@ -44,8 +44,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dlux = [
-    "dLux>=0.15",
+jax = [
+    "jax>=0.6",
 ]
 dev = [
     "pytest>=7.0",

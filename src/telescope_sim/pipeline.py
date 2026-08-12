@@ -91,7 +91,7 @@ class TelescopeSim:
         """Load a configuration YAML and build the pipeline.
 
         ``backend`` overrides the YAML's ``backend`` field (``"hcipy"`` /
-        ``"dlux"``) so one config can be run against either compute backend.
+        ``"jax"``) so one config can be run against either compute backend.
         """
         # Deferred to avoid the loader → pipeline import cycle.
         from telescope_sim.config.loader import build_from_yaml  # noqa: PLC0415

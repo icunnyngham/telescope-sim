@@ -36,7 +36,7 @@ _KINDS = (
 registry: dict[str, dict[str, type]] = {kind: {} for kind in _KINDS}
 
 # Per-backend overlay: implementations registered for a specific compute
-# backend (e.g. "dlux") shadow the backend-agnostic table above for that
+# backend (e.g. "jax") shadow the backend-agnostic table above for that
 # backend only. Keyed [backend][kind][name].
 backend_registry: dict[str, dict[str, dict[str, type]]] = {}
 
@@ -46,7 +46,7 @@ def register(kind: str, name: str, *, backend: str | None = None) -> Callable[[T
 
     With ``backend=None`` (the default) the implementation is backend-agnostic
     and used by every backend that has no specific override. Passing a backend
-    name (e.g. ``backend="dlux"``) registers a backend-specific implementation
+    name (e.g. ``backend="jax"``) registers a backend-specific implementation
     that shadows the agnostic one when the pipeline is built for that backend.
     """
     if kind not in registry:

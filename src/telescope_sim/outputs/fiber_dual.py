@@ -36,7 +36,7 @@ class FiberDualOutputTap(OutputTap):
     """
 
     # Couples per-wavelength hcipy focal wavefronts into an hcipy fiber
-    # model; there is no dlux equivalent of this path yet.
+    # model; there is no jax-backend equivalent of this path yet.
     supported_backends = frozenset({"hcipy"})
 
     def __init__(

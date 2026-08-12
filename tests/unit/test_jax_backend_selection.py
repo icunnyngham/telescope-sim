@@ -1,12 +1,12 @@
-"""Backend-selection mechanics and config-time gating for the dlux backend.
+"""Backend-selection mechanics and config-time gating for the jax backend.
 
-The dlux backend is opt-in and shares everything but propagation with the
+The jax backend is opt-in and shares everything but propagation with the
 default hcipy backend, so the interesting surface is *selection* (schema
 default, YAML field, constructor override, registry overlay precedence)
-and *refusal* (stages that have no dlux implementation must fail at build
+and *refusal* (stages that have no jax implementation must fail at build
 time with an actionable message, not silently at sample time).
 
-Propagation-parity assertions live in ``test_dlux_backend_parity.py``.
+Propagation-parity assertions live in ``test_jax_backend_parity.py``.
 """
 
 from __future__ import annotations
@@ -18,16 +18,16 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-pytest.importorskip("dLux", reason="dlux backend requires the optional [dlux] extra")
+pytest.importorskip("jax", reason="jax backend requires the optional [jax] extra")
 
 from telescope_sim import TelescopeSim  # noqa: E402
 from telescope_sim.abc import Corrector  # noqa: E402
 
-# Importing the backend package populates the "dlux" registry overlay (and
-# enables jax x64); the loader does the same lazily on backend="dlux".
-from telescope_sim.backends.dlux.focal_planes import (  # noqa: E402
-    DLuxAngularFocalPlane,
-    DLuxPhysicalFocalPlane,
+# Importing the backend package populates the "jax" registry overlay (and
+# enables jax x64); the loader does the same lazily on backend="jax".
+from telescope_sim.backends.jax.focal_planes import (  # noqa: E402
+    JaxAngularFocalPlane,
+    JaxPhysicalFocalPlane,
     _check_coronagraph,
 )
 from telescope_sim.config.loader import build  # noqa: E402
@@ -88,8 +88,8 @@ def test_schema_backend_defaults_to_hcipy():
     assert SimConfig.model_validate(_base_config()).backend == "hcipy"
 
 
-def test_schema_accepts_dlux_backend():
-    assert SimConfig.model_validate(_base_config(backend="dlux")).backend == "dlux"
+def test_schema_accepts_jax_backend():
+    assert SimConfig.model_validate(_base_config(backend="jax")).backend == "jax"
 
 
 def test_schema_rejects_unknown_backend():
@@ -110,10 +110,10 @@ def _fp_types(sim: TelescopeSim) -> list[type]:
     return [type(fp) for fp in sim.focal_planes.values()]
 
 
-def test_yaml_backend_field_selects_dlux_focal_planes(tmp_path):
-    """`backend: dlux` in the YAML is honored with no code-side argument."""
-    sim = TelescopeSim.from_yaml(_write_yaml(tmp_path, _base_config(backend="dlux")))
-    assert _fp_types(sim) == [DLuxAngularFocalPlane]
+def test_yaml_backend_field_selects_jax_focal_planes(tmp_path):
+    """`backend: jax` in the YAML is honored with no code-side argument."""
+    sim = TelescopeSim.from_yaml(_write_yaml(tmp_path, _base_config(backend="jax")))
+    assert _fp_types(sim) == [JaxAngularFocalPlane]
 
 
 def test_yaml_without_backend_field_stays_on_hcipy(tmp_path):
@@ -123,15 +123,15 @@ def test_yaml_without_backend_field_stays_on_hcipy(tmp_path):
 
 def test_from_yaml_backend_argument_overrides_yaml_field(tmp_path):
     """The explicit argument wins in *both* directions (one YAML, either backend)."""
-    dlux_yaml = _write_yaml(tmp_path, _base_config(backend="dlux"))
-    forced_hcipy = TelescopeSim.from_yaml(dlux_yaml, backend="hcipy")
+    jax_yaml = _write_yaml(tmp_path, _base_config(backend="jax"))
+    forced_hcipy = TelescopeSim.from_yaml(jax_yaml, backend="hcipy")
     assert _fp_types(forced_hcipy) == [AngularFocalPlane]
 
     hcipy_yaml = str(tmp_path / "hcipy.yaml")
     with open(hcipy_yaml, "w") as f:
         yaml.safe_dump(_base_config(), f)
-    forced_dlux = TelescopeSim.from_yaml(hcipy_yaml, backend="dlux")
-    assert _fp_types(forced_dlux) == [DLuxAngularFocalPlane]
+    forced_jax = TelescopeSim.from_yaml(hcipy_yaml, backend="jax")
+    assert _fp_types(forced_jax) == [JaxAngularFocalPlane]
 
 
 def test_physical_focal_plane_also_swaps(tmp_path):
@@ -148,7 +148,7 @@ def test_physical_focal_plane_also_swaps(tmp_path):
     }
     path = _write_yaml(tmp_path, cfg)
     assert _fp_types(TelescopeSim.from_yaml(path)) == [PhysicalFocalPlane]
-    assert _fp_types(TelescopeSim.from_yaml(path, backend="dlux")) == [DLuxPhysicalFocalPlane]
+    assert _fp_types(TelescopeSim.from_yaml(path, backend="jax")) == [JaxPhysicalFocalPlane]
 
 
 # --- Registry overlay --------------------------------------------------------
@@ -156,7 +156,7 @@ def test_physical_focal_plane_also_swaps(tmp_path):
 
 def test_overlay_shadows_agnostic_table_for_its_backend_only():
     assert lookup("focal_plane", "angular") is AngularFocalPlane
-    assert lookup("focal_plane", "angular", backend="dlux") is DLuxAngularFocalPlane
+    assert lookup("focal_plane", "angular", backend="jax") is JaxAngularFocalPlane
     # No "hcipy" overlay exists — the default backend resolves the agnostic table.
     assert lookup("focal_plane", "angular", backend="hcipy") is AngularFocalPlane
 
@@ -167,14 +167,14 @@ def test_lookup_falls_back_to_agnostic_for_unshadowed_names():
     from telescope_sim.apertures.segmented_circular import SegmentedCircularAperture
     from telescope_sim.correctors.zernike import ZernikeCorrector
 
-    assert lookup("corrector", "zernike", backend="dlux") is ZernikeCorrector
-    assert lookup("aperture", "segmented_circular", backend="dlux") is SegmentedCircularAperture
-    assert "physical" not in backend_registry["dlux"]["corrector"]
+    assert lookup("corrector", "zernike", backend="jax") is ZernikeCorrector
+    assert lookup("aperture", "segmented_circular", backend="jax") is SegmentedCircularAperture
+    assert "physical" not in backend_registry["jax"]["corrector"]
 
 
-def test_lookup_unknown_name_on_dlux_reports_agnostic_availability():
+def test_lookup_unknown_name_on_jax_reports_agnostic_availability():
     with pytest.raises(KeyError, match="focal_plane/no_such_plane is not registered"):
-        lookup("focal_plane", "no_such_plane", backend="dlux")
+        lookup("focal_plane", "no_such_plane", backend="jax")
 
 
 def test_lookup_unknown_backend_falls_back_to_agnostic():
@@ -207,9 +207,9 @@ def test_register_rejects_duplicate_and_unknown_kind():
 # --- Config-time refusals ----------------------------------------------------
 
 
-def test_fiber_dual_tap_rejected_on_dlux():
+def test_fiber_dual_tap_rejected_on_jax():
     """fiber_dual consumes per-λ hcipy focal wavefronts, which the summed-OPD
-    dlux propagation never materializes."""
+    jax propagation never materializes."""
     cfg = _base_config()
     cfg["focal_planes"] = {
         "filter1": {
@@ -237,25 +237,23 @@ def test_fiber_dual_tap_rejected_on_dlux():
         }
     }
     config = SimConfig.model_validate(cfg)
-    with pytest.raises(ValueError, match=r"output_tap/fiber_dual is not supported on the 'dlux'"):
-        build(config, backend="dlux")
+    with pytest.raises(ValueError, match=r"output_tap/fiber_dual is not supported on the 'jax'"):
+        build(config, backend="jax")
 
 
 @pytest.mark.parametrize("coro_type", ["vortex", "vector_vortex"])
-def test_vortex_coronagraphs_rejected_on_dlux(coro_type):
+def test_vortex_coronagraphs_rejected_on_jax(coro_type):
     cfg = _base_config()
     cfg["coronagraph"] = {"type": coro_type, "charge": 2}
     config = SimConfig.model_validate(cfg)
-    with pytest.raises(
-        ValueError, match=rf"coronagraph/{coro_type} is not supported on the 'dlux'"
-    ):
-        build(config, backend="dlux")
+    with pytest.raises(ValueError, match=rf"coronagraph/{coro_type} is not supported on the 'jax'"):
+        build(config, backend="jax")
 
 
-def test_identity_coronagraph_allowed_on_dlux():
+def test_identity_coronagraph_allowed_on_jax():
     cfg = _base_config()
     cfg["coronagraph"] = {"type": "identity"}
-    sim = build(SimConfig.model_validate(cfg), backend="dlux")
+    sim = build(SimConfig.model_validate(cfg), backend="jax")
     assert sim.sample()["images"]["psf"].shape == (16, 16, 1)
 
 
@@ -264,12 +262,12 @@ def test_check_coronagraph_is_re_asserted_at_sample_time():
     a sim assembled via from_components() bypasses the loader entirely."""
     _check_coronagraph(None)
     _check_coronagraph(type("Fake", (), {"name": "identity"})())
-    with pytest.raises(NotImplementedError, match="not supported on the 'dlux' backend"):
+    with pytest.raises(NotImplementedError, match="not supported on the 'jax' backend"):
         _check_coronagraph(type("Fake", (), {"name": "vortex"})())
 
 
 # A corrector with no ``_dm`` / ``_sm``: the pipeline's ``_mirror_of`` returns
-# None, so the dlux backend has no OPD to sum for it. Subclasses the ABC so
+# None, so the jax backend has no OPD to sum for it. Subclasses the ABC so
 # it stays invisible to the fit_surface contract guard in
 # test_corrector_fit_contract.py (it inherits the base's raising default).
 @register("corrector", "_no_mirror_probe")
@@ -305,10 +303,10 @@ def _no_mirror_config() -> dict:
     return cfg
 
 
-def test_non_opd_corrector_rejected_on_dlux():
+def test_non_opd_corrector_rejected_on_jax():
     config = SimConfig.model_validate(_no_mirror_config())
     with pytest.raises(ValueError, match=r"\['weird'\] expose no mirror surface"):
-        build(config, backend="dlux")
+        build(config, backend="jax")
 
 
 def test_non_opd_corrector_is_fine_on_hcipy():

@@ -1,16 +1,16 @@
-"""Regression tests: the ``dlux`` backend reproduces the same legacy digests.
+"""Regression tests: the ``jax`` backend reproduces the same legacy digests.
 
-Runs the committed golden fixtures a second time with ``backend="dlux"``,
+Runs the committed golden fixtures a second time with ``backend="jax"``,
 comparing against the same digests and tolerances the default (hcipy)
 backend is held to in :mod:`test_canonical`. Rather than restating the
 comparison logic, each test forces the backend and then calls the
 corresponding hcipy-backend test body, so the two suites can never drift
 apart.
 
-Fixtures whose components have no dlux implementation (vortex
+Fixtures whose components have no jax implementation (vortex
 coronagraphs, the ``fiber_dual`` tap) are skipped with the reason derived
 from their config, and the whole module skips when the optional
-dLux/JAX dependencies are absent.
+JAX dependency are absent.
 
 Marked ``slow`` like its hcipy sibling: run with
 ``pytest --runslow tests/fixtures/``.
@@ -32,13 +32,13 @@ import test_canonical as harness  # noqa: E402  (sibling module; also puts fixtu
 REPO_ROOT = harness.REPO_ROOT
 
 pytestmark = pytest.mark.skipif(
-    importlib.util.find_spec("dLux") is None or importlib.util.find_spec("jax") is None,
-    reason="backend='dlux' needs the optional dLux/JAX dependencies",
+    importlib.util.find_spec("jax") is None,
+    reason="backend='jax' needs the optional JAX dependency",
 )
 
 
-def _dlux_block_reason(fixture_id: str) -> str | None:
-    """Why this fixture cannot run on the dlux backend, or None if it can.
+def _jax_block_reason(fixture_id: str) -> str | None:
+    """Why this fixture cannot run on the jax backend, or None if it can.
 
     Read straight from the fixture's YAML so new fixtures are classified
     automatically. Mirrors the loader's config-time gates: non-identity
@@ -51,7 +51,7 @@ def _dlux_block_reason(fixture_id: str) -> str | None:
 
     coronagraph = config.get("coronagraph")
     if coronagraph is not None and coronagraph.get("type") != "identity":
-        return f"coronagraph {coronagraph.get('type')!r} has no dlux implementation"
+        return f"coronagraph {coronagraph.get('type')!r} has no jax implementation"
 
     for out_name, out_cfg in (config.get("outputs") or {}).items():
         tap_type = (out_cfg.get("tap") or {}).get("type")
@@ -60,13 +60,13 @@ def _dlux_block_reason(fixture_id: str) -> str | None:
     return None
 
 
-def _dlux_params() -> list:
+def _jax_params() -> list:
     """Re-parametrize the hcipy fixture list, skipping the ineligible ones."""
     params = []
     for entry in harness.CANONICAL_FIXTURES:
         # Entries are either a plain id or a pytest.param wrapping one.
         fixture_id = getattr(entry, "values", (entry,))[0]
-        reason = _dlux_block_reason(fixture_id)
+        reason = _jax_block_reason(fixture_id)
         marks = (pytest.mark.skip(reason=reason),) if reason else ()
         params.append(pytest.param(fixture_id, marks=marks, id=fixture_id))
     return params
@@ -92,30 +92,30 @@ def _force_backend(monkeypatch: pytest.MonkeyPatch, backend: str) -> None:
 
 @pytest.mark.slow
 @pytest.mark.fixture
-@pytest.mark.parametrize("fixture_id", _dlux_params())
-def test_canonical_dlux_reproduces_digest(fixture_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Same digest comparison as the hcipy suite, built with backend='dlux'."""
+@pytest.mark.parametrize("fixture_id", _jax_params())
+def test_canonical_jax_reproduces_digest(fixture_id: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same digest comparison as the hcipy suite, built with backend='jax'."""
     import telescope_sim  # noqa: PLC0415
 
-    _force_backend(monkeypatch, "dlux")
+    _force_backend(monkeypatch, "jax")
     harness.test_canonical_v2_reproduces_digest(fixture_id, telescope_sim)
 
 
 @pytest.mark.slow
 @pytest.mark.fixture
-def test_noisy_psf_dlux_reproduces_digest(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fixture #17 (seeded detector noise) on the dlux backend."""
+def test_noisy_psf_jax_reproduces_digest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fixture #17 (seeded detector noise) on the jax backend."""
     import telescope_sim  # noqa: PLC0415
 
-    _force_backend(monkeypatch, "dlux")
+    _force_backend(monkeypatch, "jax")
     harness.test_noisy_psf_v2_reproduces_digest(telescope_sim)
 
 
 @pytest.mark.slow
 @pytest.mark.fixture
-def test_strehl_zernike_dlux_reproduces_digest(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fixture #16 (both Strehl modes over an actuation sweep) on dlux."""
+def test_strehl_zernike_jax_reproduces_digest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fixture #16 (both Strehl modes over an actuation sweep) on jax."""
     import telescope_sim  # noqa: PLC0415
 
-    _force_backend(monkeypatch, "dlux")
+    _force_backend(monkeypatch, "jax")
     harness.test_strehl_zernike_v2_reproduces_digest(telescope_sim)

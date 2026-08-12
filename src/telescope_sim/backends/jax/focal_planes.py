@@ -1,4 +1,4 @@
-"""dlux-backend focal planes — JAX propagation behind the standard interfaces.
+"""jax-backend focal planes — JAX propagation behind the standard interfaces.
 
 These subclass the hcipy focal planes so construction parameters, grid
 metadata (``lam_setup``), reference-PSF bookkeeping, and Strehl/detector
@@ -25,7 +25,7 @@ from typing import Any
 
 import numpy as np
 
-from telescope_sim.backends.dlux.propagation import FraunhoferMFT
+from telescope_sim.backends.jax.propagation import FraunhoferMFT
 from telescope_sim.focal_planes.angular import AngularFocalPlane
 from telescope_sim.focal_planes.physical import FocalPlaneResult, PhysicalFocalPlane
 from telescope_sim.pipeline import _mirror_of
@@ -46,7 +46,7 @@ def _chain_opd(
     if atmos is not None:
         if not hasattr(atmos, "phase_for"):
             raise NotImplementedError(
-                "the 'dlux' backend requires an atmosphere exposing "
+                "the 'jax' backend requires an atmosphere exposing "
                 ".phase_for(lam) (an OPD-defined phase screen); arbitrary "
                 "wavefront callables are hcipy-backend only."
             )
@@ -56,7 +56,7 @@ def _chain_opd(
         if mirror is None:
             raise ValueError(
                 f"corrector {getattr(c, 'name', c)!r} exposes no mirror "
-                "surface; it cannot run on the 'dlux' backend."
+                "surface; it cannot run on the 'jax' backend."
             )
         opd += 2.0 * np.asarray(mirror.surface, dtype=np.float64)
     return opd
@@ -66,12 +66,12 @@ def _check_coronagraph(coronagraph: Any | None) -> None:
     if coronagraph is not None and getattr(coronagraph, "name", None) != "identity":
         raise NotImplementedError(
             f"coronagraph {getattr(coronagraph, 'name', coronagraph)!r} is "
-            "not supported on the 'dlux' backend."
+            "not supported on the 'jax' backend."
         )
 
 
-class _DLuxPropagationMixin:
-    """Shared dlux propagation path for the angular/physical focal planes."""
+class _JaxPropagationMixin:
+    """Shared jax propagation path for the angular/physical focal planes."""
 
     _mft: FraunhoferMFT | None = None
     _amplitude: np.ndarray | None = None
@@ -100,8 +100,8 @@ class _DLuxPropagationMixin:
         return FocalPlaneResult(intensity=intensity, wavefronts=[])
 
 
-@register("focal_plane", "angular", backend="dlux")
-class DLuxAngularFocalPlane(_DLuxPropagationMixin, AngularFocalPlane):
+@register("focal_plane", "angular", backend="jax")
+class JaxAngularFocalPlane(_JaxPropagationMixin, AngularFocalPlane):
     """Angular focal plane propagated on JAX (see module docstring)."""
 
     def build(self, pupil_grid: Any, aperture_field: Any) -> None:
@@ -110,8 +110,8 @@ class DLuxAngularFocalPlane(_DLuxPropagationMixin, AngularFocalPlane):
         self._build_mft(focal_length=1.0)
 
 
-@register("focal_plane", "physical", backend="dlux")
-class DLuxPhysicalFocalPlane(_DLuxPropagationMixin, PhysicalFocalPlane):
+@register("focal_plane", "physical", backend="jax")
+class JaxPhysicalFocalPlane(_JaxPropagationMixin, PhysicalFocalPlane):
     """Physical focal plane propagated on JAX (see module docstring)."""
 
     def build(self, pupil_grid: Any, aperture_field: Any) -> None:
@@ -130,4 +130,4 @@ class DLuxPhysicalFocalPlane(_DLuxPropagationMixin, PhysicalFocalPlane):
         self._build_mft(focal_length=self.focal_length, amplitude_scale=scale)
 
 
-__all__ = ["DLuxAngularFocalPlane", "DLuxPhysicalFocalPlane"]
+__all__ = ["JaxAngularFocalPlane", "JaxPhysicalFocalPlane"]

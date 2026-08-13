@@ -50,6 +50,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `precision: float32` config field (jax backend only; default `float64`):
   builds the propagation kernels in single precision for half-memory,
   faster sampling; images and reference PSFs come out `float32`.
+- On-device post-processing for `sample_batch` via a new `key=` argument
+  (jax backend; an int seed or JAX PRNG key): each output's tap and
+  post-processing chain — including `noisy_detector` photon/read/dark
+  noise on JAX PRNG streams, `convolve_image`, the norms, and
+  `channels_first` — runs inside the batched device dispatch, so noisy
+  training data is generated end-to-end on-device. Noisy outputs are
+  reproducible per key within the jax backend (per-sample and per-output
+  key splitting) but deliberately do not bit-match the host path's numpy
+  draws; the detector's flat-field fixed pattern is shared with the host
+  path, and noise-free chains reproduce host results exactly. In
+  key-mode, `output_overrides` for `int_phot_flux` / `convolve_image`
+  accept one value or an array with a leading batch dimension. Chains
+  containing a component with no in-graph equivalent are rejected with a
+  clear error naming it (drop `key=` for host-side post-processing).
+  Actuation echoes and Strehl remain host-side.
 
 ### Changed
 

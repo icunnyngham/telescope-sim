@@ -213,11 +213,55 @@ def test_forward_fn_requires_jax_backend(elf_pair):
         hcipy_sim.forward_fn()
 
 
-def test_forward_fn_rejects_fit_role_chains():
+def test_forward_fn_composes_fit_role_chains():
+    """dm3 (fit-role, cumulative source) must cancel dm1+dm2 *inside the
+    graph*: the composed-fit maps reproduce sample()'s host least squares,
+    so the image returns to the reference PSF."""
     config = _config_from_yaml(DATA / "three_zernike_residual_fit.yaml", _widen_focal_planes)
+    hcipy_sim = build(config, backend="hcipy")
     jax_sim = build(config, backend="jax")
-    with pytest.raises(NotImplementedError, match="wavefront_role='fit'"):
-        jax_sim.forward_fn()
+    fwd = jax_sim.forward_fn()
+    assert fwd.corrector_names == ("dm1", "dm2")  # the fit corrector is not an input
+    assert fwd.echo_names == ("dm3",)
+
+    rng = np.random.default_rng(11)
+    acts = {"dm1": rng.normal(size=8), "dm2": rng.normal(size=8)}
+    img = np.asarray(fwd(acts)["filter1"])
+    assert_image_parity(img, hcipy_sim.sample(acts)["images"]["psf"][..., 0])
+    ref = jax_sim.focal_planes["filter1"].reference_psf
+    np.testing.assert_allclose(img / ref.max(), ref / ref.max(), rtol=0, atol=1e-6)
+
+    # Fit-role correctors take no caller actuations — same as sample().
+    with pytest.raises(ValueError, match="unknown corrector"):
+        fwd({"dm3": np.zeros(8)})
+
+
+def test_forward_actuation_echo_matches_sample_including_named_fit_source():
+    """All three echo strategies + a named fit_source, against sample()."""
+
+    def mutate(raw):
+        _widen_focal_planes(raw)
+        raw["correctors"]["dm2"]["target_strategy"] = "residual_fit_only"
+        raw["correctors"]["dm2"]["target"] = True
+        raw["correctors"]["dm3"]["target_strategy"] = "actuators_plus_residual_fit"
+        raw["correctors"]["dm3"]["fit_source"] = "dm1"
+
+    config = _config_from_yaml(DATA / "three_zernike_residual_fit.yaml", mutate)
+    jax_sim = build(config, backend="jax")
+    fwd = jax_sim.forward_fn()
+    rng = np.random.default_rng(13)
+    acts = {"dm1": rng.normal(size=8), "dm2": rng.normal(size=8)}
+
+    device = {k: np.asarray(v) for k, v in fwd.actuation_echo(acts).items()}
+    host = jax_sim.sample(acts)["actuations"]
+    assert set(device) == set(host)
+    for name in host:
+        scale = np.max(np.abs(host[name]))
+        assert scale > 0
+        np.testing.assert_allclose(device[name] / scale, host[name] / scale, rtol=0, atol=ATOL)
+    assert_image_parity(
+        np.asarray(fwd(acts)["filter1"]), jax_sim.sample(acts)["images"]["psf"][..., 0]
+    )
 
 
 def test_forward_fn_rejects_nonlinear_set_actuators():
@@ -317,13 +361,32 @@ def test_sample_batch_input_validation(elf_pair, ptt_batch):
         jax_sim.sample_batch({"segments": ptt_batch}, batch_size=5)
 
 
-def test_sample_batch_fit_role_rejected_on_jax_but_loops_on_hcipy():
+def test_sample_batch_fit_role_chain_matches_loop_on_both_backends():
+    """Fit-role chains through the batch paths: batch ≡ loop of sample(),
+    with the fit resolved in-graph (propagation) and host-side (echo)."""
     config = _config_from_yaml(DATA / "three_zernike_residual_fit.yaml", _widen_focal_planes)
     acts = {"dm1": np.random.default_rng(7).normal(size=(2, 8))}
-    with pytest.raises(NotImplementedError, match="wavefront_role='fit'"):
-        build(config, backend="jax").sample_batch(acts)
-    out = build(config, backend="hcipy").sample_batch(acts)
-    assert out["images"]["psf"].shape[0] == 2
+    for backend in ("hcipy", "jax"):
+        sim = build(config, backend=backend)
+        batch = sim.sample_batch(acts)
+        singles = [sim.sample({"dm1": acts["dm1"][b]}) for b in range(2)]
+        for b, single in enumerate(singles):
+            assert_image_parity(batch["images"]["psf"][b], single["images"]["psf"])
+            np.testing.assert_array_equal(
+                batch["actuations"]["dm3"][b], single["actuations"]["dm3"]
+            )
+        if backend == "jax":
+            # Key-mode: propagation, post, AND echoes on device.
+            keyed = sim.sample_batch(acts, key=0)
+            for b, single in enumerate(singles):
+                assert_image_parity(keyed["images"]["psf"][b], single["images"]["psf"])
+                scale = np.max(np.abs(single["actuations"]["dm3"]))
+                np.testing.assert_allclose(
+                    keyed["actuations"]["dm3"][b] / scale,
+                    single["actuations"]["dm3"] / scale,
+                    rtol=0,
+                    atol=ATOL,
+                )
 
 
 # --- precision knob -----------------------------------------------------------

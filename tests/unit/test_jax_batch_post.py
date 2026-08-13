@@ -94,12 +94,22 @@ def test_keymode_reproducible_per_key_and_varying_across_keys_and_samples(noisy_
 
 
 def test_keymode_noise_free_chain_matches_host_mode(noisy_sim, dm_batch):
-    """The anchor: a chain with no random stage must reproduce host post."""
+    """The anchor: a chain with no random stage must reproduce host post.
+
+    Echoes are computed on-device in key-mode (the forward model's
+    composed maps), so they match the host readback at fp level, not bit
+    level."""
     device = noisy_sim.sample_batch({"dm": dm_batch}, key=0)
     host = noisy_sim.sample_batch({"dm": dm_batch})
     np.testing.assert_allclose(device["images"]["psf"], host["images"]["psf"], rtol=0, atol=ATOL)
     for name in host["actuations"]:
-        np.testing.assert_array_equal(device["actuations"][name], host["actuations"][name])
+        scale = max(float(np.max(np.abs(host["actuations"][name]))), np.finfo(float).tiny)
+        np.testing.assert_allclose(
+            device["actuations"][name] / scale,
+            host["actuations"][name] / scale,
+            rtol=0,
+            atol=ATOL,
+        )
 
 
 def test_keymode_deterministic_detector_shares_flat_field_with_host():

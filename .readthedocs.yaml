@@ -26,3 +26,5 @@ python:
       path: .
       extra_requirements:
         - doc
+        # autodoc imports the backends.jax modules, which need jax present.
+        - jax

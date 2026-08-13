@@ -30,6 +30,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      # The JAX backend suites skip cleanly when jax is absent, so install
+      # the extra explicitly (and fail loudly if it didn't take) to keep
+      # them exercised in CI. Current jax releases require Python >= 3.11;
+      # the 3.10 legs run the hcipy-only suite.
+      - name: Install JAX backend extra
+        if: matrix.python-version != '3.10'
+        run: |
+          pip install -e ".[dev,jax]"
+          python -c "import jax; print('jax', jax.__version__)"
+
       - name: Lint
         run: ruff check src tests
 

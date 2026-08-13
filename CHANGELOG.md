@@ -126,6 +126,13 @@ export demonstrated by single-frame phase retrieval in tutorial 08.
 - The `intensity` output tap preserves the propagation dtype instead of
   forcing `float64` (visible only with `precision: float32`).
 
+### Packaging
+
+- Constrain `xxhash<4`: hcipy ≤ 0.7.0 passes unencoded strings to grid
+  hashing, which xxhash 4.0 rejects (`TypeError` on any grid hash — every
+  pipeline build). Fixed upstream in hcipy but unreleased; the constraint
+  will be dropped when a fixed hcipy ships.
+
 ## [2.2.0] - 2026-07-23
 
 Feature release: the `actuator_grid` DM learns `fit_surface()`, so raw-command

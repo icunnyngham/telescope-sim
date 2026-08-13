@@ -40,6 +40,7 @@ classifiers = [
 ]
 dependencies = [
     "hcipy>=0.6",
+    "xxhash<4",  # hcipy <= 0.7.0 grid hashing passes unencoded strings, rejected by xxhash 4; drop when a fixed hcipy releases
     "pydantic>=2.0",
     "numpy>=1.24",
     "scipy>=1.10",

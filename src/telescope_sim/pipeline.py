@@ -210,6 +210,63 @@ class TelescopeSim:
         actuations = dict(actuations or {})
         output_overrides = dict(output_overrides or {})
 
+        # 1-2) Apply actuator state, resolve fit-role correctors, and
+        #      accumulate the cumulative-OPD stream (shared with the batch
+        #      paths via _apply_chain_state).
+        cum_opd_pre, running_opd = self._apply_chain_state(actuations, atmos)
+
+        # 3) Propagate each focal plane and collect FocalPlaneResult objects
+        #    (each holds both summed intensity and per-wavelength wavefronts
+        #    so downstream taps can pick what they need). Atmosphere applies
+        #    at the front of the per-λ loop, before any corrector.
+        fp_results: dict[str, Any] = {}
+        for name, fp in self._c.focal_planes.items():
+            fp_results[name] = fp._propagate_chain(
+                self._c.correctors, coronagraph=self._c.coronagraph, atmos=atmos
+            )
+
+        # 4-6) Taps + post-processing, actuation echo, Strehl — shared with
+        #      sample_batch() via _finalize_outputs.
+        result = self._finalize_outputs(
+            fp_results,
+            output_overrides=output_overrides,
+            meas_strehl=meas_strehl,
+            cum_opd_pre=cum_opd_pre,
+        )
+
+        # 7) Pupil-plane OPD readback. The cumulative-OPD stream computed
+        #    in step 2 already includes the atmosphere seed (when it
+        #    exposes phase_for) and every DM-backed corrector's surface×2,
+        #    so we just wrap it as an hcipy.Field for masked display.
+        if meas_pupil_opd:
+            result["pupil_opd"] = hcipy.Field(running_opd.copy(), self._c.pupil_grid)
+
+        return result
+
+    def _apply_chain_state(  # noqa: PLR0912  (chain orchestration: branches reflect roles/sources)
+        self,
+        actuations: Mapping[str, ArrayLike],
+        atmos: Any = None,
+        *,
+        need_opd_stream: bool = True,
+    ) -> tuple[list[NDArray[np.float64]] | None, NDArray[np.float64] | None]:
+        """Steps 1-2 of ``sample()``: actuator state + cumulative OPD.
+
+        Applies caller actuations to actuate/impose correctors, walks the
+        chain accumulating per-corrector cumulative pupil-plane OPD
+        (= 2 × surface) "just before this corrector", and resolves
+        fit-role correctors against it as it goes (convention:
+        ``fit_surface`` returns *matching* actuator values; the apply
+        site negates). Atmosphere seeds the running OPD when it exposes
+        ``.phase_for``; otherwise the OPD stream stays at zero and
+        fit-role correctors won't see the atmosphere.
+
+        Returns ``(cum_opd_pre, running_opd)``. With
+        ``need_opd_stream=False`` and no fit-role correctors in the
+        chain, the surface walk is skipped entirely and ``(None, None)``
+        is returned — a fast path for batch loops that only need the
+        actuator state applied.
+        """
         # 1) Apply actuator state to "actuate" and "impose" correctors.
         for c in self._c.correctors:
             if c.wavefront_role in {"actuate", "impose"}:
@@ -220,18 +277,11 @@ class TelescopeSim:
                     c.set_actuators(values)
             # "fit" correctors are resolved below
 
-        # 2) Walk the chain in order, accumulating per-corrector cumulative
-        #    pupil-plane OPD (= 2 × surface) "just before this corrector"
-        #    and resolving fit-role correctors against it as we go. The
-        #    snapshots are also saved for step 5 (residual-fit target
-        #    strategies). Convention: fit_surface returns *matching*
-        #    actuator values; we negate at the apply site for fit-role.
-        #
-        #    Atmosphere seeds the running OPD: if `atmos` exposes
-        #    `.phase_for(lam)`, extract OPD via phase=2π·OPD/lam ⇒ OPD =
-        #    phase_for(1)/(2π). Otherwise the wavefront is still modified
-        #    in step 3 but the OPD stream stays at zero (fit-role correctors
-        #    won't see the atmosphere).
+        if not need_opd_stream and not any(c.wavefront_role == "fit" for c in self._c.correctors):
+            return None, None
+
+        # 2) Chain walk with fit resolution and cumulative-OPD snapshots
+        #    (used by step 5's residual-fit target strategies).
         correctors_by_name = {c.name: c for c in self._c.correctors}
         running_opd = np.zeros(self._c.pupil_grid.size, dtype=np.float64)
         if atmos is not None and hasattr(atmos, "phase_for"):
@@ -283,33 +333,7 @@ class TelescopeSim:
 
             seen_names.add(c.name)
 
-        # 3) Propagate each focal plane and collect FocalPlaneResult objects
-        #    (each holds both summed intensity and per-wavelength wavefronts
-        #    so downstream taps can pick what they need). Atmosphere applies
-        #    at the front of the per-λ loop, before any corrector.
-        fp_results: dict[str, Any] = {}
-        for name, fp in self._c.focal_planes.items():
-            fp_results[name] = fp._propagate_chain(
-                self._c.correctors, coronagraph=self._c.coronagraph, atmos=atmos
-            )
-
-        # 4-6) Taps + post-processing, actuation echo, Strehl — shared with
-        #      sample_batch() via _finalize_outputs.
-        result = self._finalize_outputs(
-            fp_results,
-            output_overrides=output_overrides,
-            meas_strehl=meas_strehl,
-            cum_opd_pre=cum_opd_pre,
-        )
-
-        # 7) Pupil-plane OPD readback. The cumulative-OPD stream computed
-        #    in step 2 already includes the atmosphere seed (when it
-        #    exposes phase_for) and every DM-backed corrector's surface×2,
-        #    so we just wrap it as an hcipy.Field for masked display.
-        if meas_pupil_opd:
-            result["pupil_opd"] = hcipy.Field(running_opd.copy(), self._c.pupil_grid)
-
-        return result
+        return cum_opd_pre, running_opd
 
     def _finalize_outputs(
         self,
@@ -422,13 +446,17 @@ class TelescopeSim:
         a pure function from caller-facing actuation values to raw summed
         focal-plane intensities, exposing the ``actuations → opd`` and
         ``opd → intensity`` stages separately (the latter is the hook for
-        external OPD such as atmosphere screens). Safe to ``jax.jit`` /
-        ``vmap`` / ``grad`` and compose into custom sampling strategies;
-        :meth:`sample_batch` is the packaged reference composition.
+        external OPD such as atmosphere screens), plus ``actuation_echo``
+        for in-graph training targets. Fit-role correctors are folded into
+        the graph by composed-fit probing at build time; note their
+        composed response covers *actuation-driven* OPD only — external
+        OPD added at the intensity stage bypasses them (use
+        :meth:`sample` for atmosphere-reactive fitting). Safe to
+        ``jax.jit`` / ``vmap`` / ``grad`` and compose into custom sampling
+        strategies; :meth:`sample_batch` is the packaged reference
+        composition.
 
-        Raises ``NotImplementedError`` on the hcipy backend and for chains
-        with fit-role correctors (whose least-squares resolution runs
-        host-side in :meth:`sample`).
+        Raises ``NotImplementedError`` on the hcipy backend.
         """
         if self._c.backend != "jax":
             raise NotImplementedError(
@@ -474,8 +502,9 @@ class TelescopeSim:
 
         ``batch_size`` is only required when ``actuations`` is empty (an
         at-rest batch); otherwise it must agree with the arrays' leading
-        dimension. Fit-role corrector chains are not supported on the jax
-        path — use :meth:`sample` (or the hcipy backend).
+        dimension. Fit-role corrector chains are supported (their state is
+        folded into the forward graph; on the host-post path they are
+        additionally resolved per sample for the echo readback).
 
         ``key`` (jax backend only; an int seed or a JAX PRNG key) opts
         into **on-device post-processing**: each output's tap + post
@@ -490,7 +519,9 @@ class TelescopeSim:
         ``channels_first``) — anything else raises, and dropping ``key=``
         restores host-side post. In key-mode, ``output_overrides`` for
         ``int_phot_flux`` / ``convolve_image`` accept either one value or
-        an array with a leading batch dimension.
+        an array with a leading batch dimension, and actuation echoes are
+        computed on-device from the forward model's composed maps
+        (fp-level, not bit, parity with the host echo).
         """
         acts, n_batch = self._validate_batch_actuations(actuations, batch_size)
 
@@ -548,30 +579,18 @@ class TelescopeSim:
                 for name, img in forward({}).items()
             }
 
-        # Residual-fit echo strategies need the per-corrector cumulative-OPD
-        # snapshots; recompute them host-side (mirrors sample() step 2 —
-        # fit-role correctors are already excluded by forward_fn()).
+        # Per-sample host bookkeeping mirrors sample() steps 1-2: the OPD
+        # stream is walked only when fit-role correctors need resolving or
+        # a residual-fit echo consumes the snapshots.
         needs_opd = any(
             c.target and c.target_strategy in ("actuators_plus_residual_fit", "residual_fit_only")
             for c in self._c.correctors
         )
         results = []
         for b in range(n_batch):
-            for c in self._c.correctors:
-                values = acts.get(c.name)
-                if values is None:
-                    c.flatten()
-                else:
-                    c.set_actuators(values[b])
-            cum_opd_pre: list[NDArray[np.float64]] | None = None
-            if needs_opd:
-                running = np.zeros(self._c.pupil_grid.size, dtype=np.float64)
-                cum_opd_pre = []
-                for c in self._c.correctors:
-                    cum_opd_pre.append(running.copy())
-                    mirror = _mirror_of(c)
-                    if mirror is not None:
-                        running = running + 2.0 * np.asarray(mirror.surface)
+            cum_opd_pre, _ = self._apply_chain_state(
+                {k: v[b] for k, v in acts.items()}, need_opd_stream=needs_opd
+            )
             fp_results = {
                 name: FocalPlaneResult(intensity=intensities[name][b], wavefronts=[])
                 for name in self._c.focal_planes
@@ -595,11 +614,13 @@ class TelescopeSim:
         meas_strehl: bool,
         key: Any,
     ) -> dict[str, Any]:
-        """Key-mode ``sample_batch``: propagation AND tap/post on device.
+        """Key-mode ``sample_batch``: propagation, tap/post, AND echoes on device.
 
-        Actuation echoes and Strehl remain host-side (the echo's fit
-        least-squares is shared numpy code). See :meth:`sample_batch` for
-        the key/override semantics and the documented determinism fork.
+        Actuation echoes come from the forward model's precomputed
+        composed-fit maps (fp-level, not bit, parity with the host echo);
+        only Strehl estimation remains host-side. See
+        :meth:`sample_batch` for the key/override semantics and the
+        documented determinism fork.
         """
         import jax  # noqa: PLC0415
         import jax.numpy as jnp  # noqa: PLC0415
@@ -646,10 +667,9 @@ class TelescopeSim:
                 fn = self._batch_post_fns[idx] = jax.jit(jax.vmap(prog))
             images[spec.name] = np.asarray(fn(intensities, out_keys, override_args))
 
-        echo_rows = self._batch_actuation_echoes(acts, n_batch)
         result: dict[str, Any] = {
             "images": images,
-            "actuations": {k: np.stack([r[k] for r in echo_rows]) for k in echo_rows[0]},
+            "actuations": self._device_echoes(forward, acts, n_batch),
         }
 
         if meas_strehl:
@@ -662,6 +682,25 @@ class TelescopeSim:
                 strehls[name] = np.array([est.compute(fp_intensities[b]) for b in range(n_batch)])
             result["strehls"] = strehls
         return result
+
+    def _device_echoes(
+        self, forward: Any, acts: dict[str, NDArray[np.float64]], n_batch: int
+    ) -> dict[str, NDArray]:
+        """Batched in-graph actuation echoes (see ``TelescopeForward.actuation_echo``)."""
+        if not forward.echo_names:
+            return {}
+        if not acts:
+            # At-rest batch: one echo, replicated.
+            return {
+                k: np.broadcast_to(np.asarray(v), (n_batch, *np.shape(v)))
+                for k, v in forward.actuation_echo({}).items()
+            }
+        echo_fn = self._batch_post_fns.get("echo")
+        if echo_fn is None:
+            import jax  # noqa: PLC0415
+
+            echo_fn = self._batch_post_fns["echo"] = jax.jit(jax.vmap(forward.actuation_echo))
+        return {k: np.asarray(v) for k, v in echo_fn(acts).items()}
 
     def _coerce_device_overrides(
         self,
@@ -695,39 +734,6 @@ class TelescopeSim:
                 )
             args[name] = arr
         return args
-
-    def _batch_actuation_echoes(
-        self, acts: dict[str, NDArray[np.float64]], n_batch: int
-    ) -> list[dict[str, NDArray]]:
-        """Host-side per-sample actuation echoes for the device batch path.
-
-        Mirrors ``sample()`` steps 1-2 (state application + cumulative-OPD
-        snapshots, computed only when a residual-fit echo needs them;
-        fit-role correctors are already excluded by ``forward_fn()``).
-        """
-        needs_opd = any(
-            c.target and c.target_strategy in ("actuators_plus_residual_fit", "residual_fit_only")
-            for c in self._c.correctors
-        )
-        rows: list[dict[str, NDArray]] = []
-        for b in range(n_batch):
-            for c in self._c.correctors:
-                values = acts.get(c.name)
-                if values is None:
-                    c.flatten()
-                else:
-                    c.set_actuators(values[b])
-            cum_opd_pre: list[NDArray[np.float64]] | None = None
-            if needs_opd:
-                running = np.zeros(self._c.pupil_grid.size, dtype=np.float64)
-                cum_opd_pre = []
-                for c in self._c.correctors:
-                    cum_opd_pre.append(running.copy())
-                    mirror = _mirror_of(c)
-                    if mirror is not None:
-                        running = running + 2.0 * np.asarray(mirror.surface)
-            rows.append(self._actuation_echo(cum_opd_pre))
-        return rows
 
     def _validate_batch_actuations(
         self,

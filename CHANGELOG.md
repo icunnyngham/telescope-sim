@@ -34,9 +34,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   extra pupil-plane OPD (e.g. atmosphere screens) added in. Actuate/impose
   corrector chains collapse to precomputed linear maps (verified against a
   probe at build time; nonlinear correctors are rejected with a clear
-  error); fit-role chains and non-identity coronagraphs are refused. This
-  is the stable primitive for custom batch samplers, gradient-based
-  optimization, and the planned differentiable-model export.
+  error); non-identity coronagraphs are refused. This is the stable
+  primitive for custom batch samplers, gradient-based optimization, and
+  the planned differentiable-model export.
+- Fit-role correctors are folded into the forward model by composed-fit
+  probing: their (linear) `fit_surface` response is probed through each
+  upstream corrector's contribution map at build time, so chains with
+  fit-role correctors — including chained fits and named `fit_source`
+  references — run through `forward_fn()` and both `sample_batch` paths
+  with no host round-trip for the fit. The composed response covers
+  actuation-driven OPD only; external OPD added at the intensity stage
+  bypasses fit-role correctors (use `sample(atmos=...)` for
+  atmosphere-reactive fitting). `forward_fn()` additionally exposes
+  `actuation_echo()` — the target correctors' echo / Y output (state and
+  residual-fit strategies) as precomputed linear maps — and
+  `sample_batch(key=...)` uses it to compute actuation echoes on-device,
+  completing the fully on-device batched training-data path (images and
+  targets); only Strehl estimation remains host-side in key-mode.
 - `TelescopeSim.sample_batch()`: reference iid batch sampler — actuation
   arrays with a leading batch dimension in, a `sample()`-shaped dict with
   a leading batch axis out. On the jax backend, propagation for the whole

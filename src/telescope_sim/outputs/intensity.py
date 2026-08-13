@@ -61,9 +61,9 @@ class IntensityOutputTap(OutputTap):
         missing = [n for n in self.focal_plane_names if n not in fp_results]
         if missing:
             raise KeyError(f"focal planes {missing} not in available outputs {list(fp_results)}")
-        psfs = [
-            np.asarray(fp_results[n].intensity, dtype=np.float64) for n in self.focal_plane_names
-        ]
+        # Preserve the propagation dtype: float64 on the default path, or
+        # float32 when the jax backend runs with precision="float32".
+        psfs = [np.asarray(fp_results[n].intensity) for n in self.focal_plane_names]
         return np.stack(psfs, axis=-1)
 
 

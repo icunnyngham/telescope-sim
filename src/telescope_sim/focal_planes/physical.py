@@ -90,12 +90,15 @@ class PhysicalFocalPlane(FocalPlane):
         self.wavefront_total_power = wavefront_total_power
         self._lam_setup: _PhysicalLamSetup | None = None
 
+    # See AngularFocalPlane: backend subclasses with their own propagation
+    # kernels skip the hcipy propagator/wavefront setup.
+    _build_hcipy_propagator = True
+
     def build(self, pupil_grid: Any, aperture_field: Any) -> None:
         # Physical focal grid: extent in meters, build via make_pupil_grid
         # (which gives us a uniform metric grid; the legacy fiber variant
         # uses this exact construction).
         focal_grid = hcipy.make_pupil_grid(self.focal_res, self.focal_extent)
-        prop = hcipy.FraunhoferPropagator(pupil_grid, focal_grid, focal_length=self.focal_length)
 
         if self.num_samples > 1:
             half = self.fractional_bandwidth / 2.0
@@ -103,10 +106,16 @@ class PhysicalFocalPlane(FocalPlane):
         else:
             filter_lams = np.array([self.central_lam])
 
-        wavefronts = [hcipy.Wavefront(aperture_field, lam) for lam in filter_lams]
-        if self.wavefront_total_power is not None:
-            for wf in wavefronts:
-                wf.total_power = float(self.wavefront_total_power)
+        prop = None
+        wavefronts: list[Any] = []
+        if self._build_hcipy_propagator:
+            prop = hcipy.FraunhoferPropagator(
+                pupil_grid, focal_grid, focal_length=self.focal_length
+            )
+            wavefronts = [hcipy.Wavefront(aperture_field, lam) for lam in filter_lams]
+            if self.wavefront_total_power is not None:
+                for wf in wavefronts:
+                    wf.total_power = float(self.wavefront_total_power)
 
         self._lam_setup = _PhysicalLamSetup(
             name=self.name,

@@ -60,6 +60,11 @@ class FraunhoferMFT:
     focal_length
         Lens focal length in meters; 1.0 reproduces the angular-focal-plane
         convention (focal coordinates in radians).
+    dtype
+        ``"float64"`` (default; the parity-first precision) or
+        ``"float32"`` for half-memory kernels and faster propagation at
+        single-precision accuracy. Kernels are built in the matching
+        complex dtype and inputs are cast on the way in.
     """
 
     def __init__(
@@ -69,7 +74,12 @@ class FraunhoferMFT:
         filter_lams: NDArray[np.floating],
         *,
         focal_length: float = 1.0,
+        dtype: str = "float64",
     ) -> None:
+        if dtype not in ("float64", "float32"):
+            raise ValueError(f"dtype must be 'float64' or 'float32', got {dtype!r}")
+        real_dtype = jnp.float64 if dtype == "float64" else jnp.float32
+        complex_dtype = jnp.complex128 if dtype == "float64" else jnp.complex64
         px, py = _separable_axes(pupil_grid)
         fx, fy = _separable_axes(focal_grid)
         lams = np.asarray(filter_lams, dtype=np.float64)
@@ -90,12 +100,13 @@ class FraunhoferMFT:
         self.pupil_shape = (py.size, px.size)
         self.focal_shape = (fy.size, fx.size)
         self.filter_lams = lams
+        self.real_dtype = real_dtype
         self._w_in = w_in
         # |1/(i·λ·f)|² intensity normalization per λ.
-        self._int_norm = jnp.asarray(1.0 / (focal_length * lams) ** 2)
-        self._k1 = jnp.asarray(k1)
-        self._k2 = jnp.asarray(k2)
-        self._lams = jnp.asarray(lams)
+        self._int_norm = jnp.asarray(1.0 / (focal_length * lams) ** 2, dtype=real_dtype)
+        self._k1 = jnp.asarray(k1, dtype=complex_dtype)
+        self._k2 = jnp.asarray(k2, dtype=complex_dtype)
+        self._lams = jnp.asarray(lams, dtype=real_dtype)
 
         @jax.jit
         def _summed_intensity(amplitude: jnp.ndarray, opd: jnp.ndarray) -> jnp.ndarray:
@@ -126,10 +137,15 @@ class FraunhoferMFT:
 
         Returns
         -------
-        (focal_res_y, focal_res_x) float64 array.
+        (focal_res_y, focal_res_x) array in this propagator's real dtype.
         """
-        amp = jnp.asarray(np.asarray(amplitude, dtype=np.float64).reshape(self.pupil_shape))
-        opd2d = jnp.asarray(np.asarray(opd, dtype=np.float64).reshape(self.pupil_shape))
+        amp = jnp.asarray(
+            np.asarray(amplitude, dtype=np.float64).reshape(self.pupil_shape),
+            dtype=self.real_dtype,
+        )
+        opd2d = jnp.asarray(
+            np.asarray(opd, dtype=np.float64).reshape(self.pupil_shape), dtype=self.real_dtype
+        )
         return np.asarray(self._summed_intensity(amp, opd2d))
 
 

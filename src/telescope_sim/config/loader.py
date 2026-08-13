@@ -90,6 +90,11 @@ def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # 
     (useful for running one YAML against both compute backends).
     """
     backend = backend or config.backend
+    if config.precision != "float64" and backend != "jax":
+        raise ValueError(
+            f"precision={config.precision!r} requires backend='jax'; the "
+            "hcipy backend computes in float64 only."
+        )
     if backend == "jax":
         # Populate the jax backend-registry overlay (and fail with an
         # actionable message when the optional dependency is missing).
@@ -187,6 +192,8 @@ def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # 
         type_name = payload.pop("type")
         cls = _lookup_for_backend("focal_plane", type_name, backend)
         fp = cls(name=fp_name, **payload)
+        if backend == "jax":
+            fp._precision = config.precision
         fp.build(pupil_grid, aperture_result.field)
         for c in corrector_chain:
             c.flatten()
@@ -254,6 +261,8 @@ def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # 
         outputs=outputs,
         strehl_estimators=strehl_estimators,
         coronagraph=coronagraph,
+        backend=backend,
+        precision=config.precision,
     )
     return TelescopeSim.from_components(components)
 

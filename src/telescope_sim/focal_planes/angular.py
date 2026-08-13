@@ -87,6 +87,11 @@ class AngularFocalPlane(FocalPlane):
 
     # --- Construction -------------------------------------------------------
 
+    # Backend subclasses that propagate through their own kernels set this
+    # False to skip the (then unused) hcipy propagator + wavefront setup;
+    # ``lam_setup.propagator`` is None and ``.wavefronts`` empty for them.
+    _build_hcipy_propagator = True
+
     def build(self, pupil_grid: Any, aperture_field: Any) -> None:
         """Build the propagator, wavefronts, and reference PSF for this filter."""
         self._pupil_grid = pupil_grid
@@ -95,7 +100,6 @@ class AngularFocalPlane(FocalPlane):
         # Focal grid: convert arcsec extent to radians (HCIPy convention)
         fov_rad = self.focal_extent * np.pi / (180.0 * 3600.0)
         focal_grid = hcipy.make_uniform_grid([self.focal_res] * 2, fov_rad)
-        prop = hcipy.FraunhoferPropagator(pupil_grid, focal_grid)
 
         if self.num_samples > 1:
             half = self.fractional_bandwidth / 2.0
@@ -103,7 +107,11 @@ class AngularFocalPlane(FocalPlane):
         else:
             filter_lams = np.array([self.central_lam])
 
-        wavefronts = [hcipy.Wavefront(aperture_field, lam) for lam in filter_lams]
+        prop = None
+        wavefronts: list[Any] = []
+        if self._build_hcipy_propagator:
+            prop = hcipy.FraunhoferPropagator(pupil_grid, focal_grid)
+            wavefronts = [hcipy.Wavefront(aperture_field, lam) for lam in filter_lams]
 
         self._lam_setup = _LamSetup(
             name=self.name,

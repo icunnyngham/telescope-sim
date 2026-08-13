@@ -75,16 +75,32 @@ class _JaxPropagationMixin:
 
     _mft: FraunhoferMFT | None = None
     _amplitude: np.ndarray | None = None
+    # The base build()'s hcipy propagator + wavefronts would go unused on
+    # this path (everything propagates through the MFT kernels), so skip
+    # constructing them; ``lam_setup.propagator`` is None here.
+    _build_hcipy_propagator = False
+    # Compute precision, set by the loader from the config's ``precision``
+    # field before build(); float64 is the parity-first default.
+    _precision: str = "float64"
 
     def _build_mft(self, *, focal_length: float, amplitude_scale: float = 1.0) -> None:
+        aperture = np.asarray(self._aperture_field)
+        if np.iscomplexobj(aperture):
+            raise ValueError(
+                f"focal plane {self.name!r}: complex aperture fields are not "
+                "supported on the 'jax' backend (the MFT path propagates a "
+                "real transmission amplitude); use the hcipy backend for "
+                "apodized/complex pupils."
+            )
         setup = self.lam_setup
         self._mft = FraunhoferMFT(
             self._pupil_grid,
             setup.focal_grid,
             setup.filter_lams,
             focal_length=focal_length,
+            dtype=self._precision,
         )
-        self._amplitude = np.asarray(self._aperture_field, dtype=np.float64) * amplitude_scale
+        self._amplitude = aperture.astype(np.float64) * amplitude_scale
 
     def _propagate_chain(
         self,
@@ -98,6 +114,12 @@ class _JaxPropagationMixin:
         opd = _chain_opd(corrector_chain, atmos, self._amplitude.size)
         intensity = self._mft.summed_intensity(self._amplitude, opd)
         return FocalPlaneResult(intensity=intensity, wavefronts=[])
+
+    def propagate(self, wf: Any) -> Any:
+        raise NotImplementedError(
+            "per-wavefront propagate() is hcipy-backend only; the jax focal "
+            "planes propagate summed pupil-plane OPD through MFT kernels."
+        )
 
 
 @register("focal_plane", "angular", backend="jax")

@@ -66,6 +66,9 @@ class SimConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
     backend: Literal["hcipy", "jax"] = "hcipy"
+    # Compute precision for the jax backend's propagation kernels; the
+    # hcipy backend is float64-only, so "float32" requires backend=jax.
+    precision: Literal["float64", "float32"] = "float64"
     pupil: PupilConfig
     aperture: StageConfig
     correctors: dict[str, CorrectorConfig] = Field(default_factory=dict)

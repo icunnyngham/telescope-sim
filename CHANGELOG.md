@@ -50,7 +50,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   residual-fit strategies) as precomputed linear maps — and
   `sample_batch(key=...)` uses it to compute actuation echoes on-device,
   completing the fully on-device batched training-data path (images and
-  targets); only Strehl estimation remains host-side in key-mode.
+  targets).
+- In-graph Strehl: `forward_fn()` exposes `strehls_from_intensities()`,
+  translating the cached peak / matched-filter estimator constants to
+  pure JAX, and `sample_batch(key=..., meas_strehl=True)` computes Strehl
+  on-device (custom estimator objects fall back to a host loop) — with
+  this, key-mode batches run propagation, post-processing, actuation
+  echoes, and Strehl in a fully on-device pipeline.
 - `TelescopeSim.sample_batch()`: reference iid batch sampler — actuation
   arrays with a leading batch dimension in, a `sample()`-shaped dict with
   a leading batch axis out. On the jax backend, propagation for the whole

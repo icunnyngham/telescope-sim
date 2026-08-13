@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "telescope-sim"
 dynamic = ["version"]
-description = "Composable, config-driven simulation of multi-aperture telescope PSFs, DMs, coronagraphs, and fiber coupling — built on HCIPy."
+description = "Composable, config-driven simulation of multi-aperture telescope PSFs, DMs, coronagraphs, and fiber coupling — built on HCIPy, with an optional differentiable JAX backend."
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -22,6 +22,9 @@ keywords = [
     "coronagraphy",
     "hcipy",
     "simulation",
+    "jax",
+    "differentiable",
+    "phase-retrieval",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",

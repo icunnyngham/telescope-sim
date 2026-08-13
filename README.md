@@ -7,7 +7,9 @@
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Composable, config-driven simulation of multi-aperture telescope PSFs, deformable
-mirrors, coronagraphs, and fiber coupling — built on [HCIPy](https://hcipy.org).
+mirrors, coronagraphs, and fiber coupling — built on [HCIPy](https://hcipy.org),
+with an optional [JAX](https://docs.jax.dev) backend that makes the whole
+telescope differentiable.
 
 `telescope-sim` provides a pluggable pipeline of optical stages (aperture,
 correctors, coronagraph, focal plane, output taps, post-processing), a
@@ -15,15 +17,33 @@ YAML-driven configuration schema, and a fixture-based regression suite. Users
 can register their own implementations of any stage without modifying the
 package.
 
+The same YAML runs on either of two compute backends. The default HCIPy
+backend is the fully general path; setting `backend: jax` swaps propagation
+onto a jitted, batchable, differentiable core with results matching HCIPy to
+float64 round-off — one device dispatch per training batch, gradients through
+the entire optical model, and export as a [zodiax](https://github.com/LouisDesdoigts/zodiax)/[dLux](https://github.com/LouisDesdoigts/dLux)-style
+model for gradient-based phase retrieval, calibration, and ML pipelines.
+
 ## Status
 
-**v2.2.0 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
+**v2.3.0 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex and vector-vortex coronagraphs, angular
-and physical focal planes, and multi-mode-fiber dual outputs.
+and physical focal planes, and multi-mode-fiber dual outputs; every
+JAX-eligible fixture passes on the JAX backend at the same tolerances.
 
 ### What's new since v2.0.0
 
+- **JAX compute backend** (v2.3.0) — `backend: jax` runs the same YAML,
+  correctors, outputs, and `sample()` on a jitted, wavelength-vmapped
+  matrix-Fourier-transform core with float64-round-off parity against
+  HCIPy. On top of it: `sample_batch` (one device dispatch per batch;
+  fully on-device noise, echoes, and Strehl with `key=`), `forward_fn`
+  (a pure jit/vmap/grad-compatible forward model), in-graph fit-role
+  correctors, and a `precision: float32` option. Tutorial 08
+  demonstrates the payoff: the telescope exported as a zodiax/dLux
+  model and a full segmented-PTT state recovered from a single
+  broadband frame by gradient descent.
 - **Actuator-grid DM** — the `actuator_grid` corrector: an N×N
   influence-function deformable mirror (gaussian or xinetics actuator
   shapes) driven by raw per-actuator commands, with DM misalignment

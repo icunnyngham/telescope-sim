@@ -3,7 +3,9 @@ telescope-sim
 
 Composable, config-driven simulation of multi-aperture telescope PSFs,
 deformable mirrors, coronagraphs, and fiber coupling — built on
-`HCIPy <https://hcipy.org>`_.
+`HCIPy <https://hcipy.org>`_, with an optional `JAX
+<https://docs.jax.dev>`_ backend that makes the whole telescope
+differentiable.
 
 The package exposes a small set of abstract base classes
 (:class:`~telescope_sim.abc.Aperture`,

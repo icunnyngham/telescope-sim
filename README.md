@@ -139,6 +139,10 @@ targets = fwd.actuation_echo({"segments": ptt})    # training Y outputs
 - Components with no JAX path (vortex coronagraphs, `fiber_dual`,
   atmospheres without `.phase_for`) are rejected at config time with clear
   errors — the hcipy backend remains the fully general path.
+- Tutorial 07 walks the backend and batched sampling; tutorial 08 exports
+  `forward_fn` as a zodiax/dLux-style differentiable model and recovers a
+  full segmented-PTT state — pistons several waves deep — from a single
+  broadband frame by gradient descent.
 
 ## Architecture
 

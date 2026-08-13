@@ -1106,7 +1106,7 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         _md(
             "# 7. JAX backend: batched sampling and the pure forward model\n\n"
             "Everything so far ran on the default hcipy backend. Setting "
-            "`backend: jax` in a config (or `backend=\"jax\"` on the "
+            '`backend: jax` in a config (or `backend="jax"` on the '
             "constructors) swaps wavefront propagation onto JAX — same YAML, "
             "same correctors and outputs, same `sample()` — with results "
             "matching hcipy to float64 round-off. Install the extra with "
@@ -1189,8 +1189,8 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "Passing **`key=`** (an int seed or a JAX PRNG key) moves the "
             "whole output stage into the device dispatch too: detector noise "
             "on JAX PRNG streams, convolution, normalizations, actuation "
-            "echoes, and Strehl. That is the \"parameters in → training data "
-            "out\" path: nothing round-trips through host numpy.\n\n"
+            'echoes, and Strehl. That is the "parameters in → training data '
+            'out" path: nothing round-trips through host numpy.\n\n'
             "Noisy outputs are reproducible per key *within* the jax backend; "
             "they deliberately do **not** bit-match the host path's numpy "
             "draws (the detector's flat-field fixed pattern *is* shared, and "
@@ -1404,6 +1404,321 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "probes `set_actuators` numerically at build time, so anything "
             "whose surface is linear in its commands folds into the forward "
             "map with no extra code."
+        ),
+    ],
+    "08_phase_retrieval": [
+        _md(
+            "# 8. Phase retrieval: exporting the model to zodiax/dLux\n\n"
+            "The JAX backend's `forward_fn` is a pure function — which makes "
+            "the whole telescope differentiable. This tutorial wraps it as a "
+            "[zodiax](https://github.com/LouisDesdoigts/zodiax) model (the "
+            "equinox-based framework underneath "
+            "[dLux](https://github.com/LouisDesdoigts/dLux)) and uses "
+            "gradient descent to solve a classically hard problem: "
+            "recovering the full piston/tip/tilt state of a segmented "
+            "telescope from a **single focal-plane image**.\n\n"
+            "The instrument is the 15-segment ELF ring from tutorial 1, "
+            "observed through **one** broadband band: 1 µm central "
+            "wavelength, 10% fractional bandwidth, 13 wavelength samples. "
+            "Focal-plane phasing of this telescope with a deep CNN was "
+            "demonstrated in the small-ELF project¹; two properties of the "
+            "instrument make the single-frame problem well-posed, for a "
+            "neural network and for gradient descent alike:\n\n"
+            "- **The odd segment count** — an odd ring is not "
+            "centrosymmetric, which eliminates the twin-image (even/odd) "
+            "ambiguity of focal-plane phase retrieval; a centrosymmetric "
+            "pupil admits a second wavefront with an identical PSF.\n"
+            "- **Spectral bandwidth in one frame** — a monochromatic image "
+            "cannot tell a segment piston from the same piston plus a whole "
+            "wave, but across a band the wave count differs per wavelength, "
+            "so one broadband image resolves the 2π wrap. A 10% band keeps "
+            "pistons unambiguous out to roughly ±5 waves (λ²/Δλ); here we "
+            "recover pistons as deep as **±4 waves of OPD** — eight times "
+            "the monochromatic ±λ/2 capture range.\n\n"
+            'Install the pieces with `pip install "telescope-sim[jax]" '
+            "zodiax optax` (zodiax brings equinox; Python ≥ 3.11).\n\n"
+            "---\n"
+            "¹ J. Kuhn *et al.*, “The small-ELF project: toward an "
+            "ultra-large coronagraphic optical receiver,” *Ground-Based and "
+            "Airborne Telescopes IX*, Proc. SPIE 12182, 161–184 (2022)."
+        ),
+        _code(
+            "import numpy as np\n"
+            "import matplotlib.pyplot as plt\n"
+            "from matplotlib.colors import LogNorm\n"
+            "from telescope_sim.config.loader import build\n"
+            "from telescope_sim.config.schema import SimConfig\n"
+            "from telescope_sim.helpers.diagnostics import plot_opd_and_psfs\n"
+            "\n"
+            "# The elf_15seg geometry with a single broadband band: 1 um\n"
+            "# central wavelength, 10% fractional bandwidth, 13 samples.\n"
+            "config = {\n"
+            '    "backend": "jax",\n'
+            '    "pupil": {"resolution": 256, "extent": 3.1563881637},\n'
+            '    "aperture": {\n'
+            '        "type": "segmented_circular", "layout": "elf",\n'
+            '        "n_segments": 15, "ring_radius": 1.25,\n'
+            '        "segment_diameter": 0.5197792270, "supersample": 16,\n'
+            "    },\n"
+            '    "correctors": {\n'
+            '        "segments": {\n'
+            '            "type": "segmented_ptt",\n'
+            '            "piston_scale": 1.0e-6, "tip_tilt_scale": 1.0e-6,\n'
+            '            "wavefront_role": "actuate",\n'
+            '            "target_strategy": "actuators", "target": True,\n'
+            "        }\n"
+            "    },\n"
+            '    "corrector_chain": ["segments"],\n'
+            '    "focal_planes": {\n'
+            '        "band_1um": {\n'
+            '            "type": "angular", "central_lam": 1.0e-6,\n'
+            '            "focal_extent": 1.0, "focal_res": 128,\n'
+            '            "fractional_bandwidth": 0.10, "num_samples": 13,\n'
+            "        }\n"
+            "    },\n"
+            '    "outputs": {\n'
+            '        "psf": {"tap": {"type": "intensity", "focal_planes": ["band_1um"]},\n'
+            '                "post_processing": [{"type": "max_intensity_norm"}]}\n'
+            "    },\n"
+            "}\n"
+            "sim = build(SimConfig.model_validate(config))\n"
+            "\n"
+            "# The unknown state to recover: random piston/tip/tilt on all 15\n"
+            "# segments. Pistons span ±2 um of surface = ±4 um of OPD —\n"
+            "# up to ±4 whole waves at 1 um, far beyond any monochromatic\n"
+            "# capture range.\n"
+            "PISTON_RANGE = 2.0\n"
+            "rng = np.random.default_rng(0)\n"
+            "ptt_true = np.zeros((15, 3))\n"
+            "ptt_true[:, 0] = rng.uniform(-PISTON_RANGE, PISTON_RANGE, 15)\n"
+            "ptt_true[:, 1:] = rng.uniform(-0.2, 0.2, (15, 2))\n"
+            "\n"
+            'out = sim.sample({"segments": ptt_true}, meas_strehl=True, meas_pupil_opd=True)\n'
+            "plot_opd_and_psfs(sim, out,\n"
+            '                  suptitle="The unknown PTT state and the frame it produces")\n'
+            "plt.show()\n"
+        ),
+        _md(
+            "## Exporting the forward model\n\n"
+            "`sim.forward_fn()` returns the telescope as a pure callable — "
+            "actuations in, per-filter focal intensities out, "
+            "`jit`/`vmap`/`grad`-compatible. To use it the dLux way, wrap it "
+            "in a `zodiax.Base` module whose array fields are pytree leaves: "
+            "the PTT state becomes a *parameter of the model*, and "
+            "everything zodiax/equinox offer (path-based `get`/`set`, "
+            "filtered transforms, optax integration) applies to the "
+            "telescope like any other dLux model.\n\n"
+            "`model()` follows the dLux convention of returning the "
+            "observation — here the flux-normalized broadband frame. The "
+            "measurement we will fit against is the same model evaluated at "
+            "the true state."
+        ),
+        _code(
+            "import equinox as eqx\n"
+            "import jax\n"
+            "import jax.numpy as jnp\n"
+            "import optax\n"
+            "import zodiax as zdx\n"
+            "\n"
+            "\n"
+            "class PTTModel(zdx.Base):\n"
+            "    ptt: jax.Array   # (15, 3) piston/tip/tilt per segment — the free parameters\n"
+            "    forward: object  # the telescope's pure forward model (static)\n"
+            "\n"
+            "    def __init__(self, sim, ptt=None):\n"
+            "        self.forward = sim.forward_fn()\n"
+            "        self.ptt = jnp.zeros((15, 3)) if ptt is None else jnp.asarray(ptt, float)\n"
+            "\n"
+            "    def model(self):\n"
+            '        images = self.forward({"segments": self.ptt})\n'
+            "        return {name: img / img.sum() for name, img in images.items()}\n"
+            "\n"
+            "\n"
+            "model = PTTModel(sim)                   # parameters at zero: the starting guess\n"
+            "data = PTTModel(sim, ptt_true).model()  # the single measured broadband frame\n"
+            "\n"
+            "fig, ax = plt.subplots(figsize=(5.2, 4.2))\n"
+            'img = np.asarray(data["band_1um"])\n'
+            "peak = float(img.max())\n"
+            'im = ax.imshow(img, cmap="inferno", norm=LogNorm(vmin=peak * 1e-6, vmax=peak))\n'
+            'ax.set_title("the measured frame — everything the fit gets to see")\n'
+            "ax.set_axis_off()\n"
+            "fig.colorbar(im, ax=ax, fraction=0.046)\n"
+            "plt.show()\n"
+        ),
+        _md(
+            "## Retrieval: multi-start descent + integer wrap resolution\n\n"
+            "The loss compares amplitudes (square roots of intensities) — "
+            "better-behaved gradients than intensity MSE across a PSF's "
+            "dynamic range. The landscape is not convex: its minima repeat "
+            "along each segment's piston at whole-wave offsets (the *wrap "
+            "comb*), with the true state deepest thanks to the bandwidth. A "
+            "recipe that handles this reliably:\n\n"
+            "1. **Multi-start descent** — run many optimizations from random "
+            "starting points *simultaneously*: batch the parameter leaf to "
+            "`(N, 15, 3)` and sum the per-start losses. Gradients don't "
+            "couple across starts and adam is elementwise, so one ordinary "
+            "training loop runs N independent descents on-device.\n"
+            "2. **Integer wrap resolution** — descents converge quickly but "
+            "may land a whole wave off on some pistons. Test comb hops per "
+            "segment in one batched evaluation and greedily accept "
+            "improvements; the broadband envelope makes hops toward the true "
+            "state improve the loss.\n"
+            "3. **Re-polish** the winner with a short low-learning-rate "
+            "descent."
+        ),
+        _code(
+            "def one_loss(ptt, model, data):\n"
+            '    images = model.set("ptt", ptt).model()\n'
+            "    return sum(jnp.mean((jnp.sqrt(images[k]) - jnp.sqrt(data[k])) ** 2)\n"
+            "               for k in data)\n"
+            "\n"
+            "\n"
+            "@eqx.filter_jit\n"
+            "@eqx.filter_value_and_grad(has_aux=True)\n"
+            "def loss_fn(params, model, data):\n"
+            "    per_start = jax.vmap(one_loss, in_axes=(0, None, None))(\n"
+            '        params["ptt"], model, data)\n'
+            "    return per_start.sum(), per_start\n"
+            "\n"
+            "\n"
+            "N_STARTS, ITERS = 16, 500\n"
+            "start_rng = np.random.default_rng(99)\n"
+            "starts = np.zeros((N_STARTS, 15, 3))\n"
+            "starts[1:, :, 0] = start_rng.uniform(-PISTON_RANGE, PISTON_RANGE,\n"
+            "                                     (N_STARTS - 1, 15))\n"
+            "starts[1:, :, 1:] = start_rng.uniform(-0.2, 0.2, (N_STARTS - 1, 15, 2))\n"
+            "\n"
+            'params = {"ptt": jnp.asarray(starts)}\n'
+            "optim, state = zdx.map_optimisers(\n"
+            '    params, {"ptt": optax.adam(optax.cosine_decay_schedule(3e-2, ITERS))})\n'
+            "\n"
+            "history = []\n"
+            "for _ in range(ITERS):\n"
+            "    (_, per_start), grads = loss_fn(params, model, data)\n"
+            "    updates, state = optim.update(grads, state)\n"
+            "    params = optax.apply_updates(params, updates)\n"
+            "    history.append(np.asarray(per_start))\n"
+            "history = np.array(history)\n"
+            "\n"
+            "plt.figure(figsize=(7, 4))\n"
+            'plt.semilogy(history, color="0.75", lw=0.7)\n'
+            'plt.semilogy(history[:, history[-1].argmin()], color="C3", lw=1.8,\n'
+            '             label="best start")\n'
+            'plt.xlabel("iteration")\n'
+            'plt.ylabel("loss")\n'
+            "plt.legend()\n"
+            'plt.title(f"{N_STARTS} descents in lockstep")\n'
+            "plt.show()\n"
+        ),
+        _code(
+            "batched_loss = eqx.filter_jit(jax.vmap(one_loss, in_axes=(0, None, None)))\n"
+            "\n"
+            "# Piston comb offsets, in caller units (um of surface): 0.5 um of\n"
+            "# surface is one wave of OPD at 1 um. Offsets up to four waves let\n"
+            "# greedy hops compose their way out of the deepest wraps.\n"
+            "DELTAS = [s * c for c in (0.5, 1.0, 1.5, 2.0) for s in (1.0, -1.0)]\n"
+            "\n"
+            "\n"
+            "def wrap_resolve(ptt, base):\n"
+            '    """Greedy per-segment piston comb hops, one batched eval per step."""\n'
+            "    hops = 0\n"
+            "    for _ in range(60):\n"
+            "        cands = np.repeat(ptt[None], 15 * len(DELTAS), axis=0)\n"
+            "        for i in range(15):\n"
+            "            for j, d in enumerate(DELTAS):\n"
+            "                cands[i * len(DELTAS) + j, i, 0] += d\n"
+            "        losses = np.asarray(batched_loss(jnp.asarray(cands), model, data))\n"
+            "        k = int(np.argmin(losses))\n"
+            "        if not losses[k] < base * 0.999:\n"
+            "            return ptt, base, hops\n"
+            "        ptt, base = cands[k], float(losses[k])\n"
+            "        hops += 1\n"
+            "    return ptt, base, hops\n"
+            "\n"
+            "\n"
+            "final = history[-1]\n"
+            "best_ptt, best_loss = None, np.inf\n"
+            "for idx in np.argsort(final)[:2]:\n"
+            "    hopped, loss_i, hops = wrap_resolve(\n"
+            '        np.array(params["ptt"][idx], dtype=float), float(final[idx]))\n'
+            '    print(f"start {idx}: {hops} wrap hops, loss {final[idx]:.2e} -> {loss_i:.2e}")\n'
+            "    if loss_i < best_loss:\n"
+            "        best_ptt, best_loss = hopped, loss_i\n"
+            "\n"
+            'polish = {"ptt": jnp.asarray(best_ptt[None])}\n'
+            'optim, state = zdx.map_optimisers(polish, {"ptt": optax.adam(3e-3)})\n'
+            "for _ in range(150):\n"
+            "    (loss, _), grads = loss_fn(polish, model, data)\n"
+            "    updates, state = optim.update(grads, state)\n"
+            "    polish = optax.apply_updates(polish, updates)\n"
+            'ptt_rec = np.asarray(polish["ptt"][0], dtype=float)\n'
+            'print(f"re-polished loss: {float(loss):.2e}")\n'
+        ),
+        _md(
+            "## The recovered state, in actuator space\n\n"
+            "Global piston is unobservable — an equal piston on every "
+            "segment moves no fringes — so both states are compared with "
+            "their mean piston removed."
+        ),
+        _code(
+            "t = ptt_true.copy()\n"
+            "h = ptt_rec.copy()\n"
+            "t[:, 0] -= t[:, 0].mean()\n"
+            "h[:, 0] -= h[:, 0].mean()\n"
+            "res = h - t\n"
+            "\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(11, 4))\n"
+            'for k, (label, color) in enumerate(zip(["piston", "tip", "tilt"],\n'
+            '                                       ["C0", "C1", "C2"])):\n'
+            "    axes[0].scatter(t[:, k], h[:, k], s=24, color=color, label=label,\n"
+            "                    alpha=0.85)\n"
+            "lim = PISTON_RANGE * 1.15\n"
+            'axes[0].plot([-lim, lim], [-lim, lim], "k-", lw=0.6, alpha=0.5)\n'
+            'axes[0].set_xlabel("true (caller units)")\n'
+            'axes[0].set_ylabel("recovered")\n'
+            'axes[0].set_title("45 parameters from one frame — pistons up to ±4 waves")\n'
+            "axes[0].legend()\n"
+            "\n"
+            "x = np.arange(15)\n"
+            'axes[1].bar(x - 0.25, res[:, 0] * 2e3, 0.25, label="piston (nm OPD)")\n'
+            'axes[1].bar(x, res[:, 1] * 1e3, 0.25, label="tip (×1e-3)")\n'
+            'axes[1].bar(x + 0.25, res[:, 2] * 1e3, 0.25, label="tilt (×1e-3)")\n'
+            'axes[1].set_xlabel("segment")\n'
+            "axes[1].set_title(\n"
+            '    f"residual: {np.sqrt(np.mean(res[:, 0] ** 2)) * 2e3:.2f} nm RMS piston OPD")\n'
+            "axes[1].legend()\n"
+            "plt.show()\n"
+        ),
+        _md(
+            "## Closing the loop\n\n"
+            "Apply the recovered state, negated, on top of the (still "
+            "unknown) true state — exactly what a controller would command — "
+            "and the telescope returns to the diffraction limit."
+        ),
+        _code(
+            'corrected = sim.sample({"segments": t - h}, meas_strehl=True,\n'
+            "                       meas_pupil_opd=True)\n"
+            "plot_opd_and_psfs(sim, corrected,\n"
+            '                  suptitle="After applying the recovered correction")\n'
+            "plt.show()\n"
+            'print("strehls:", {k: round(float(v), 4)\n'
+            "                   for k, v in corrected['strehls'].items()})\n"
+        ),
+        _md(
+            "## Notes\n\n"
+            "- The same pattern works for **any** config and corrector kind: "
+            "`forward_fn` probes correctors numerically, so a Zernike DM or "
+            "an `actuator_grid` DM exports identically — nothing here is "
+            "specific to the segmented PTT corrector.\n"
+            "- The model is an ordinary pytree. Swap adam for any optax "
+            "optimiser, stage learning rates per parameter with "
+            "`zdx.map_optimisers`, or hand the same loss to a JAX-native "
+            "sampler (numpyro, blackjax) for posteriors instead of point "
+            "estimates.\n"
+            "- Runtime scales with starts × iterations, but every start "
+            "shares one jitted program — widening the search is cheap, "
+            "especially on accelerators."
         ),
     ],
 }

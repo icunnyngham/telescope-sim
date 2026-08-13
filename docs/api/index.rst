@@ -91,6 +91,23 @@ Concrete implementations
 .. automodule:: telescope_sim.strehl
    :members:
 
+JAX backend
+-----------
+
+.. automodule:: telescope_sim.backends.jax
+
+.. automodule:: telescope_sim.backends.jax.forward
+   :members:
+
+.. automodule:: telescope_sim.backends.jax.propagation
+   :members:
+
+.. automodule:: telescope_sim.backends.jax.focal_planes
+   :members:
+
+.. automodule:: telescope_sim.backends.jax.post
+   :members:
+
 Helpers
 -------
 

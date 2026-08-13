@@ -88,6 +88,50 @@ See [docs/tutorials/](docs/tutorials) for runnable notebooks that exercise the
 canonical mini-ELF, vortex coronagraph, custom-pupil + Zernike DM, and fiber
 MMF paths.
 
+## JAX compute backend (optional)
+
+```bash
+pip install "telescope-sim[jax]"   # requires Python >= 3.11
+```
+
+Setting `backend: jax` in a config (or `backend="jax"` on
+`from_yaml`/`from_preset`) swaps wavefront propagation onto JAX while
+keeping the same YAML schema, correctors, outputs, and `sample()`
+semantics — results match the default hcipy backend to float64 round-off
+(pinned by the test suite). On top of it:
+
+```python
+sim = TelescopeSim.from_preset("elf_15seg", backend="jax")
+
+# Batched sampling: one jitted+vmapped device dispatch for the whole batch
+batch = sim.sample_batch({"segments": ptt_batch})            # host-side post
+batch = sim.sample_batch({"segments": ptt_batch}, key=0,     # fully on-device:
+                         meas_strehl=True)                   # noise, echoes, Strehl
+
+# The pure forward model: jit / vmap / grad it, or build your own sampler
+fwd = sim.forward_fn()
+images = fwd({"segments": ptt})                  # actuations -> raw intensities
+opd = fwd.opd_from_actuations({"segments": ptt}) # ... or stage by stage
+images = fwd.intensity_from_opd(opd + screen_opd)  # external-OPD hook
+targets = fwd.actuation_echo({"segments": ptt})    # training Y outputs
+```
+
+- `sample_batch(...)` returns a `sample()`-shaped dict with a leading batch
+  axis; on the hcipy backend it falls back to an equivalent loop.
+- `sample_batch(key=...)` (int seed or JAX PRNG key) runs detector noise,
+  post-processing, actuation echoes, and Strehl inside the device dispatch
+  for end-to-end on-device training-data generation. Noise is reproducible
+  per key within the jax backend (it does not bit-match the host path's
+  numpy draws; noise-free chains match exactly).
+- Fit-role correctors are folded into the forward model at build time
+  (composed-fit probing), so residual-fit training targets need no host
+  round-trip.
+- `precision: float32` in the config halves kernel memory for faster
+  sampling; `float64` (the default) is the parity-first setting.
+- Components with no JAX path (vortex coronagraphs, `fiber_dual`,
+  atmospheres without `.phase_for`) are rejected at config time with clear
+  errors — the hcipy backend remains the fully general path.
+
 ## Architecture
 
 The pipeline is a linear chain of pupil-plane stages (aperture → correctors →

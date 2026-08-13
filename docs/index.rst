@@ -42,6 +42,7 @@ validates the config with pydantic v2 and instantiates a
    tutorials/04_fiber_mmf
    tutorials/05_custom_components
    tutorials/06_actuator_grid_dm
+   tutorials/07_jax_backend_batches
 
 
 .. toctree::

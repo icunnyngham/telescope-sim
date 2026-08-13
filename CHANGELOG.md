@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-08-13
+
+The dual-backend release: an optional JAX compute backend runs the same
+YAML pipelines on a jitted, batchable, differentiable core with
+float64-round-off parity against the default HCIPy backend, adding
+`sample_batch`, the pure `forward_fn` forward model, fully on-device
+training-data generation, and zodiax/dLux-style differentiable-model
+export demonstrated by single-frame phase retrieval in tutorial 08.
+
 ### Added
 
 - Optional JAX compute backend for focal-plane propagation, selected via
@@ -1045,7 +1054,8 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.0...v2.1.1
 [2.1.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.0.2...v2.1.0

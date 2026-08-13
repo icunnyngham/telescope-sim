@@ -99,6 +99,8 @@ class TelescopeSim:
         # Lazily-built jax-backend artifacts (see forward_fn / sample_batch).
         self._forward: Any = None
         self._batched_forward: Any = None
+        self._batch_post_programs: list[Any] | None = None
+        self._batch_post_fns: dict[Any, Any] = {}
 
     # --- Construction entry points -----------------------------------------
 
@@ -360,26 +362,7 @@ class TelescopeSim:
         #    pupil"; the ML model trainer applies -Y downstream to drive
         #    corrections. Matches legacy v1 ``out_actuate = caller +
         #    matching_fit(atmos)``.
-        actuator_echo: dict[str, NDArray] = {}
-        for i, c in enumerate(self._c.correctors):
-            if not c.target:
-                continue
-            if c.target_strategy == "none":
-                continue
-            if c.target_strategy == "actuators":
-                actuator_echo[c.name] = np.asarray(c.actuators)
-                continue
-            if cum_opd_pre is None:
-                raise RuntimeError(
-                    f"corrector {c.name!r} uses target_strategy="
-                    f"{c.target_strategy!r} but no cumulative-OPD snapshots "
-                    "were provided."
-                )
-            if c.target_strategy == "actuators_plus_residual_fit":
-                residual = np.asarray(c.fit_surface(cum_opd_pre[i]))
-                actuator_echo[c.name] = np.asarray(c.actuators) + residual
-            elif c.target_strategy == "residual_fit_only":
-                actuator_echo[c.name] = np.asarray(c.fit_surface(cum_opd_pre[i]))
+        actuator_echo = self._actuation_echo(cum_opd_pre)
 
         result: dict[str, Any] = {
             "images": images,
@@ -400,6 +383,35 @@ class TelescopeSim:
             result["strehls"] = strehls
 
         return result
+
+    def _actuation_echo(self, cum_opd_pre: list[NDArray[np.float64]] | None) -> dict[str, NDArray]:
+        """Step 5 of ``sample()``: the actuation echo / Y output.
+
+        Reads the correctors' current actuator state, so callers must have
+        applied the sample's actuations first. ``cum_opd_pre`` is required
+        only when a target corrector uses a residual-fit strategy.
+        """
+        actuator_echo: dict[str, NDArray] = {}
+        for i, c in enumerate(self._c.correctors):
+            if not c.target:
+                continue
+            if c.target_strategy == "none":
+                continue
+            if c.target_strategy == "actuators":
+                actuator_echo[c.name] = np.asarray(c.actuators)
+                continue
+            if cum_opd_pre is None:
+                raise RuntimeError(
+                    f"corrector {c.name!r} uses target_strategy="
+                    f"{c.target_strategy!r} but no cumulative-OPD snapshots "
+                    "were provided."
+                )
+            if c.target_strategy == "actuators_plus_residual_fit":
+                residual = np.asarray(c.fit_surface(cum_opd_pre[i]))
+                actuator_echo[c.name] = np.asarray(c.actuators) + residual
+            elif c.target_strategy == "residual_fit_only":
+                actuator_echo[c.name] = np.asarray(c.fit_surface(cum_opd_pre[i]))
+        return actuator_echo
 
     # --- Pure forward function + batch sampling (jax backend) ---------------
 
@@ -437,6 +449,7 @@ class TelescopeSim:
         output_overrides: Mapping[str, Mapping[str, Any]] | None = None,
         meas_strehl: bool = False,
         batch_size: int | None = None,
+        key: Any = None,
     ) -> dict[str, Any]:
         """Reference iid batch sampler: stacked ``sample()`` semantics.
 
@@ -463,8 +476,36 @@ class TelescopeSim:
         at-rest batch); otherwise it must agree with the arrays' leading
         dimension. Fit-role corrector chains are not supported on the jax
         path — use :meth:`sample` (or the hcipy backend).
+
+        ``key`` (jax backend only; an int seed or a JAX PRNG key) opts
+        into **on-device post-processing**: each output's tap + post
+        chain — including detector noise on JAX PRNG streams — runs
+        inside the batched device dispatch, so training data never
+        round-trips through host-side numpy post. Noisy outputs are then
+        reproducible per key *within* the jax backend but deliberately do
+        NOT bit-match the host path's numpy draws (the flat-field fixed
+        pattern is shared; the random draws are not). Requires every
+        output's chain to have an in-graph equivalent (the ``intensity``
+        tap, ``noisy_detector``, ``convolve_image``, the norms,
+        ``channels_first``) — anything else raises, and dropping ``key=``
+        restores host-side post. In key-mode, ``output_overrides`` for
+        ``int_phot_flux`` / ``convolve_image`` accept either one value or
+        an array with a leading batch dimension.
         """
         acts, n_batch = self._validate_batch_actuations(actuations, batch_size)
+
+        if key is not None:
+            if self._c.backend != "jax":
+                raise NotImplementedError(
+                    "sample_batch(key=...) — on-device post-processing — requires backend='jax'."
+                )
+            return self._sample_batch_on_device(
+                acts,
+                n_batch,
+                output_overrides=dict(output_overrides or {}),
+                meas_strehl=meas_strehl,
+                key=key,
+            )
 
         if self._c.backend != "jax":
             return _stack_sample_results(
@@ -478,6 +519,19 @@ class TelescopeSim:
                 ]
             )
 
+        return self._sample_batch_host_post(
+            acts, n_batch, output_overrides=output_overrides, meas_strehl=meas_strehl
+        )
+
+    def _sample_batch_host_post(
+        self,
+        acts: dict[str, NDArray[np.float64]],
+        n_batch: int,
+        *,
+        output_overrides: Mapping[str, Mapping[str, Any]] | None,
+        meas_strehl: bool,
+    ) -> dict[str, Any]:
+        """Default jax batch path: device propagation, host-side steps 4-6."""
         forward = self.forward_fn()
         if acts:
             if self._batched_forward is None:
@@ -531,6 +585,149 @@ class TelescopeSim:
                 )
             )
         return _stack_sample_results(results)
+
+    def _sample_batch_on_device(
+        self,
+        acts: dict[str, NDArray[np.float64]],
+        n_batch: int,
+        *,
+        output_overrides: dict[str, Mapping[str, Any]],
+        meas_strehl: bool,
+        key: Any,
+    ) -> dict[str, Any]:
+        """Key-mode ``sample_batch``: propagation AND tap/post on device.
+
+        Actuation echoes and Strehl remain host-side (the echo's fit
+        least-squares is shared numpy code). See :meth:`sample_batch` for
+        the key/override semantics and the documented determinism fork.
+        """
+        import jax  # noqa: PLC0415
+        import jax.numpy as jnp  # noqa: PLC0415
+
+        from telescope_sim.backends.jax.post import compile_output_program  # noqa: PLC0415
+
+        forward = self.forward_fn()
+        dtype = jnp.float32 if self._c.precision == "float32" else jnp.float64
+        if self._batch_post_programs is None:
+            self._batch_post_programs = [
+                compile_output_program(spec, self._c.focal_planes, dtype)
+                for spec in self._c.outputs
+            ]
+        unknown = sorted(set(output_overrides) - {spec.name for spec in self._c.outputs})
+        if unknown:
+            raise ValueError(f"output_overrides reference unknown output(s): {unknown}")
+
+        if isinstance(key, int):
+            key = jax.random.PRNGKey(key)
+        sample_keys = jax.random.split(key, n_batch)
+
+        if acts:
+            if self._batched_forward is None:
+                self._batched_forward = jax.jit(jax.vmap(forward))
+            intensities = self._batched_forward(acts)
+        else:
+            single = forward({})
+            intensities = {
+                name: jnp.broadcast_to(img, (n_batch, *img.shape)) for name, img in single.items()
+            }
+
+        images: dict[str, NDArray] = {}
+        for idx, (spec, prog) in enumerate(
+            zip(self._c.outputs, self._batch_post_programs, strict=True)
+        ):
+            override_args = self._coerce_device_overrides(
+                prog, spec.name, dict(output_overrides.get(spec.name) or {}), n_batch, dtype
+            )
+            # Per-output key stream: fold the output index into each
+            # per-sample key so outputs never share draws.
+            out_keys = jax.vmap(lambda k, i=idx: jax.random.fold_in(k, i))(sample_keys)
+            fn = self._batch_post_fns.get(idx)
+            if fn is None:
+                fn = self._batch_post_fns[idx] = jax.jit(jax.vmap(prog))
+            images[spec.name] = np.asarray(fn(intensities, out_keys, override_args))
+
+        echo_rows = self._batch_actuation_echoes(acts, n_batch)
+        result: dict[str, Any] = {
+            "images": images,
+            "actuations": {k: np.stack([r[k] for r in echo_rows]) for k in echo_rows[0]},
+        }
+
+        if meas_strehl:
+            strehls: dict[str, NDArray] = {}
+            for name in self._c.focal_planes:
+                est = self._c.strehl_estimators.get(name)
+                if est is None:
+                    continue
+                fp_intensities = np.asarray(intensities[name])
+                strehls[name] = np.array([est.compute(fp_intensities[b]) for b in range(n_batch)])
+            result["strehls"] = strehls
+        return result
+
+    def _coerce_device_overrides(
+        self,
+        prog: Any,
+        out_name: str,
+        overrides: dict[str, Any],
+        n_batch: int,
+        dtype: Any,
+    ) -> dict[str, Any]:
+        """Turn key-mode override values into leading-batch-dim traced args."""
+        import jax.numpy as jnp  # noqa: PLC0415
+
+        from telescope_sim.backends.jax.post import OVERRIDE_SAMPLE_NDIM  # noqa: PLC0415
+
+        args: dict[str, Any] = {}
+        for name, value in overrides.items():
+            if name not in prog.override_params:
+                raise ValueError(
+                    f"output {out_name!r}: override {name!r} cannot be applied "
+                    "on-device; drop key= to use host-side post-processing."
+                )
+            arr = jnp.asarray(value, dtype=dtype)
+            sample_ndim = OVERRIDE_SAMPLE_NDIM[name]
+            if arr.ndim == sample_ndim:
+                arr = jnp.broadcast_to(arr, (n_batch, *arr.shape))
+            elif not (arr.ndim == sample_ndim + 1 and arr.shape[0] == n_batch):
+                raise ValueError(
+                    f"output {out_name!r}: override {name!r} must be one value "
+                    f"or carry a leading batch dimension of {n_batch}; got "
+                    f"shape {np.shape(value)}"
+                )
+            args[name] = arr
+        return args
+
+    def _batch_actuation_echoes(
+        self, acts: dict[str, NDArray[np.float64]], n_batch: int
+    ) -> list[dict[str, NDArray]]:
+        """Host-side per-sample actuation echoes for the device batch path.
+
+        Mirrors ``sample()`` steps 1-2 (state application + cumulative-OPD
+        snapshots, computed only when a residual-fit echo needs them;
+        fit-role correctors are already excluded by ``forward_fn()``).
+        """
+        needs_opd = any(
+            c.target and c.target_strategy in ("actuators_plus_residual_fit", "residual_fit_only")
+            for c in self._c.correctors
+        )
+        rows: list[dict[str, NDArray]] = []
+        for b in range(n_batch):
+            for c in self._c.correctors:
+                values = acts.get(c.name)
+                if values is None:
+                    c.flatten()
+                else:
+                    c.set_actuators(values[b])
+            cum_opd_pre: list[NDArray[np.float64]] | None = None
+            if needs_opd:
+                running = np.zeros(self._c.pupil_grid.size, dtype=np.float64)
+                cum_opd_pre = []
+                for c in self._c.correctors:
+                    cum_opd_pre.append(running.copy())
+                    mirror = _mirror_of(c)
+                    if mirror is not None:
+                        running = running + 2.0 * np.asarray(mirror.surface)
+            rows.append(self._actuation_echo(cum_opd_pre))
+        return rows
 
     def _validate_batch_actuations(
         self,

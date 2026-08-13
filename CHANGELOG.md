@@ -27,6 +27,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `@register(kind, name, backend="jax")` shadows the backend-agnostic
     registration for that backend only; existing registrations and custom
     user components are unaffected.
+- `TelescopeSim.forward_fn()` (jax backend): a pure, jit/vmap/grad-compatible
+  forward model from caller-facing actuation values to raw summed
+  focal-plane intensities, with the `actuations → opd` and
+  `opd → intensity` stages exposed separately — the latter accepts any
+  extra pupil-plane OPD (e.g. atmosphere screens) added in. Actuate/impose
+  corrector chains collapse to precomputed linear maps (verified against a
+  probe at build time; nonlinear correctors are rejected with a clear
+  error); fit-role chains and non-identity coronagraphs are refused. This
+  is the stable primitive for custom batch samplers, gradient-based
+  optimization, and the planned differentiable-model export.
+- `TelescopeSim.sample_batch()`: reference iid batch sampler — actuation
+  arrays with a leading batch dimension in, a `sample()`-shaped dict with
+  a leading batch axis out. On the jax backend, propagation for the whole
+  batch runs as one jitted+vmapped dispatch over `forward_fn()` (~3.3×
+  the per-sample hcipy loop on CPU for the packaged preset at batch 256)
+  while output taps, post-processing, actuation echoes, and Strehl reuse
+  the exact per-sample `sample()` code path; on the hcipy backend it is a
+  plain loop over `sample()` with identical semantics. Custom sampling
+  strategies (curriculum, temporal sequences, RL) should compose
+  `forward_fn()` directly instead of extending this method.
+- `precision: float32` config field (jax backend only; default `float64`):
+  builds the propagation kernels in single precision for half-memory,
+  faster sampling; images and reference PSFs come out `float32`.
+
+### Changed
+
+- The jax backend's focal planes no longer construct the (unused) hcipy
+  propagator and wavefront objects at build time, cutting their build
+  overhead; their `lam_setup.propagator` is now `None`. Complex aperture
+  fields are rejected on the jax backend with a clear error (the MFT path
+  propagates a real transmission amplitude).
+- The `intensity` output tap preserves the propagation dtype instead of
+  forcing `float64` (visible only with `precision: float32`).
 
 ## [2.2.0] - 2026-07-23
 

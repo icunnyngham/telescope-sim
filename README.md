@@ -94,6 +94,14 @@ MMF paths.
 pip install "telescope-sim[jax]"   # requires Python >= 3.11
 ```
 
+The extra is fully additive: the base install depends only on HCIPy and
+never imports JAX, and requesting `backend: jax` without the extra fails
+with the install command. The pin resolves to the CPU wheel; for GPU,
+install JAX's accelerator build per the
+[JAX install docs](https://docs.jax.dev/en/latest/installation.html)
+(e.g. `pip install -U "jax[cuda12]"`) — the backend picks it up with no
+code changes.
+
 Setting `backend: jax` in a config (or `backend="jax"` on
 `from_yaml`/`from_preset`) swaps wavefront propagation onto JAX while
 keeping the same YAML schema, correctors, outputs, and `sample()`

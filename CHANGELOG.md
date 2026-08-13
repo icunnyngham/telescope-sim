@@ -86,6 +86,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   clear error naming it (drop `key=` for host-side post-processing).
   Actuation echoes and Strehl remain host-side.
 
+- Tutorial 07 (`docs/tutorials/07_jax_backend_batches.ipynb`): the JAX
+  backend end-to-end — cross-backend parity, `sample_batch`, fully
+  on-device noisy batches with per-sample photon flux, the pure
+  `forward_fn` stages with a gradient-through-the-optics demo, and
+  in-graph fit-role cancellation. README and the API reference now cover
+  the JAX backend surface.
+- CI installs the `[jax]` extra on Python >= 3.11 runners (with a loud
+  import check) so the JAX backend suites run in CI instead of silently
+  skipping; the docs builds install it too so autodoc can import the
+  backend modules.
+
 ### Changed
 
 - The jax backend's focal planes no longer construct the (unused) hcipy

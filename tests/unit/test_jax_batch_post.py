@@ -240,6 +240,32 @@ def test_full_norm_chain_in_graph_matches_host(dm_batch):
     np.testing.assert_allclose(device, host, rtol=0, atol=ATOL)
 
 
+@pytest.mark.parametrize("method", ["peak", "matched_filter"])
+def test_keymode_strehl_on_device_matches_host_mode(method, dm_batch):
+    """Both stock estimators translate in-graph; key-mode Strehl must
+    match the host-mode batch (computed on the same raw intensities)."""
+
+    outputs = {
+        "psf": _intensity_output(["max_intensity_norm"]),
+        "noisy": _noisy_output(**NOISY_FULL),
+    }
+    config = _config(outputs).model_copy(
+        update=(
+            {"strehl_method": "peak"}
+            if method == "peak"
+            else {"strehl_method": "matched_filter", "strehl_core_rad": 2.0e-6}
+        )
+    )
+    sim = build(config, backend="jax")
+    assert sim.forward_fn().strehl_names == ("filter1",)
+
+    device = sim.sample_batch({"dm": dm_batch}, key=0, meas_strehl=True)["strehls"]["filter1"]
+    host = sim.sample_batch({"dm": dm_batch}, meas_strehl=True)["strehls"]["filter1"]
+    assert device.shape == (4,)
+    assert 0.0 < float(device.min()) <= float(device.max()) <= 1.0 + 1e-9
+    np.testing.assert_allclose(device, host, rtol=1e-12)
+
+
 # --- Refusals -----------------------------------------------------------------
 
 

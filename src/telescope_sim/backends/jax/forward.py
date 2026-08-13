@@ -34,6 +34,9 @@ The two stages are exposed separately:
 - :meth:`TelescopeForward.actuation_echo` — the target correctors'
   echo / Y output (state + residual-fit strategies) as precomputed
   linear maps of the same inputs, for fully on-device training targets.
+- :meth:`TelescopeForward.strehls_from_intensities` — per-focal-plane
+  Strehl from raw intensities, using the cached estimator constants
+  (peak-pixel or matched-filter) in-graph.
 
 Out of scope, by design: output taps and post-processors (see
 ``backends/jax/post.py`` for their in-graph batch programs).
@@ -51,6 +54,7 @@ from numpy.typing import ArrayLike, NDArray
 
 from telescope_sim.backends.jax.focal_planes import _check_coronagraph
 from telescope_sim.pipeline import _mirror_of
+from telescope_sim.strehl import _MatchedFilterStrehl, _PeakStrehl
 
 
 def _probe_affine_actuation(corrector: Any) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -121,6 +125,7 @@ class TelescopeForward:
         dtype: Any,
         echoes: dict[str, tuple[dict[str, jnp.ndarray], jnp.ndarray, tuple[int, ...]]]
         | None = None,
+        strehl_fns: dict[str, Any] | None = None,
     ) -> None:
         self._maps = maps
         self._opd_offset = opd_offset
@@ -128,6 +133,7 @@ class TelescopeForward:
         self._n_actuators = dict(n_actuators)
         self._dtype = dtype
         self._echoes = dict(echoes or {})
+        self._strehl_fns = dict(strehl_fns or {})
 
     @property
     def corrector_names(self) -> tuple[str, ...]:
@@ -145,6 +151,11 @@ class TelescopeForward:
     def echo_names(self) -> tuple[str, ...]:
         """Target correctors whose actuation echo is computable in-graph."""
         return tuple(self._echoes)
+
+    @property
+    def strehl_names(self) -> tuple[str, ...]:
+        """Focal planes whose Strehl estimator is computable in-graph."""
+        return tuple(self._strehl_fns)
 
     def opd_from_actuations(self, actuations: Mapping[str, ArrayLike] | None = None) -> jnp.ndarray:
         """Total pupil-plane OPD (meters, flat) for caller actuation values.
@@ -179,6 +190,22 @@ class TelescopeForward:
     def __call__(self, actuations: Mapping[str, ArrayLike] | None = None) -> dict[str, jnp.ndarray]:
         """``intensity_from_opd(opd_from_actuations(actuations))``."""
         return self.intensity_from_opd(self.opd_from_actuations(actuations))
+
+    def strehls_from_intensities(
+        self, intensities: Mapping[str, ArrayLike]
+    ) -> dict[str, jnp.ndarray]:
+        """Per-focal-plane Strehl for raw summed intensities, in-graph.
+
+        Pure and jit/vmap-compatible, using the same cached
+        reference-PSF constants the host estimators hold (peak-pixel or
+        matched-filter, per the config's ``strehl_method``). Feed it the
+        output of :meth:`intensity_from_opd` / :meth:`__call__` —
+        Strehl is defined on raw intensities, before any post-processing.
+        """
+        return {
+            name: fn(jnp.asarray(intensities[name], dtype=self._dtype))
+            for name, fn in self._strehl_fns.items()
+        }
 
     def actuation_echo(
         self, actuations: Mapping[str, ArrayLike] | None = None
@@ -244,6 +271,31 @@ def _fit_of_offset(corrector: Any, offset: np.ndarray) -> np.ndarray:
     if offset.any():
         return np.asarray(corrector.fit_surface(offset), dtype=np.float64).ravel()
     return np.zeros(int(corrector.n_actuators), dtype=np.float64)
+
+
+def _strehl_fn(estimator: Any, dtype: Any) -> Any | None:
+    """In-graph equivalent of a cached Strehl estimator, or None.
+
+    Both stock estimators are fixed-constant reductions (a single-pixel
+    read over the cached reference peak; a matched-filter projection over
+    a cached core mask), so they translate directly. Custom estimator
+    objects return None — the caller falls back to host-side Strehl for
+    that focal plane.
+    """
+    if isinstance(estimator, _PeakStrehl):
+        if estimator.reference_peak <= 0:
+            return lambda img: jnp.zeros((), dtype=dtype)
+        index = int(estimator.peak_index)
+        peak = float(estimator.reference_peak)
+        return lambda img: img.reshape(-1)[index] / peak
+    if isinstance(estimator, _MatchedFilterStrehl):
+        if estimator.ref_core_sq_sum <= 0:
+            return lambda img: jnp.zeros((), dtype=dtype)
+        indices = jnp.asarray(np.flatnonzero(np.asarray(estimator.core_mask)))
+        ref_core = jnp.asarray(estimator.ref_core_vals, dtype=dtype)
+        norm = float(estimator.ref_core_sq_sum)
+        return lambda img: (img.reshape(-1)[indices] * ref_core).sum() / norm
+    return None
 
 
 def _merge_maps(left: dict[str, np.ndarray], right: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
@@ -379,6 +431,12 @@ def build_forward(components: Any) -> TelescopeForward:  # noqa: PLR0912,PLR0915
         )
         planes[name] = (mft, amplitude)
 
+    strehl_fns: dict[str, Any] = {}
+    for name, estimator in components.strehl_estimators.items():
+        fn = _strehl_fn(estimator, dtype)
+        if fn is not None:
+            strehl_fns[name] = fn
+
     return TelescopeForward(
         maps={k: jnp.asarray(v, dtype=dtype) for k, v in total_maps.items()},
         opd_offset=jnp.asarray(total_off, dtype=dtype),
@@ -386,6 +444,7 @@ def build_forward(components: Any) -> TelescopeForward:  # noqa: PLR0912,PLR0915
         n_actuators=n_actuators,
         dtype=dtype,
         echoes=echoes,
+        strehl_fns=strehl_fns,
     )
 
 

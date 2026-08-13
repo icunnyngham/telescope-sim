@@ -519,9 +519,10 @@ class TelescopeSim:
         ``channels_first``) — anything else raises, and dropping ``key=``
         restores host-side post. In key-mode, ``output_overrides`` for
         ``int_phot_flux`` / ``convolve_image`` accept either one value or
-        an array with a leading batch dimension, and actuation echoes are
-        computed on-device from the forward model's composed maps
-        (fp-level, not bit, parity with the host echo).
+        an array with a leading batch dimension, and actuation echoes and
+        Strehl are computed on-device from the forward model's composed
+        maps and cached estimator constants (fp-level, not bit, parity
+        with the host path).
         """
         acts, n_batch = self._validate_batch_actuations(actuations, batch_size)
 
@@ -614,11 +615,12 @@ class TelescopeSim:
         meas_strehl: bool,
         key: Any,
     ) -> dict[str, Any]:
-        """Key-mode ``sample_batch``: propagation, tap/post, AND echoes on device.
+        """Key-mode ``sample_batch``: propagation, tap/post, echoes, and Strehl on device.
 
         Actuation echoes come from the forward model's precomputed
-        composed-fit maps (fp-level, not bit, parity with the host echo);
-        only Strehl estimation remains host-side. See
+        composed-fit maps and Strehl from its in-graph estimator
+        translations (both fp-level, not bit, parity with the host path;
+        custom Strehl estimator objects fall back to a host loop). See
         :meth:`sample_batch` for the key/override semantics and the
         documented determinism fork.
         """
@@ -673,15 +675,33 @@ class TelescopeSim:
         }
 
         if meas_strehl:
-            strehls: dict[str, NDArray] = {}
-            for name in self._c.focal_planes:
-                est = self._c.strehl_estimators.get(name)
-                if est is None:
-                    continue
-                fp_intensities = np.asarray(intensities[name])
-                strehls[name] = np.array([est.compute(fp_intensities[b]) for b in range(n_batch)])
-            result["strehls"] = strehls
+            result["strehls"] = self._device_strehls(forward, intensities, n_batch)
         return result
+
+    def _device_strehls(
+        self, forward: Any, intensities: Mapping[str, Any], n_batch: int
+    ) -> dict[str, NDArray]:
+        """Batched Strehl for the device path: in-graph estimators where
+        available, host loop for custom estimator objects (the stock
+        peak / matched_filter methods both translate in-graph)."""
+        strehls: dict[str, NDArray] = {}
+        device_names = set(forward.strehl_names)
+        if device_names:
+            strehl_fn = self._batch_post_fns.get("strehl")
+            if strehl_fn is None:
+                import jax  # noqa: PLC0415
+
+                strehl_fn = self._batch_post_fns["strehl"] = jax.jit(
+                    jax.vmap(forward.strehls_from_intensities)
+                )
+            strehls.update({k: np.asarray(v) for k, v in strehl_fn(intensities).items()})
+        for name in self._c.focal_planes:
+            est = self._c.strehl_estimators.get(name)
+            if est is None or name in device_names:
+                continue
+            fp_intensities = np.asarray(intensities[name])
+            strehls[name] = np.array([est.compute(fp_intensities[b]) for b in range(n_batch)])
+        return strehls
 
     def _device_echoes(
         self, forward: Any, acts: dict[str, NDArray[np.float64]], n_batch: int

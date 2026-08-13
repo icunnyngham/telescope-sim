@@ -25,6 +25,7 @@ from telescope_sim.abc import (
     PipelineContext,
     PostProcessor,
 )
+from telescope_sim.focal_planes.physical import FocalPlaneResult
 from telescope_sim.strehl import StrehlEstimator
 
 
@@ -62,6 +63,23 @@ class _PipelineComponents:
     outputs: list[_OutputSpec]
     strehl_estimators: dict[str, StrehlEstimator] = field(default_factory=dict)
     coronagraph: Coronagraph | None = None
+    backend: str = "hcipy"
+    precision: str = "float64"
+
+
+def _stack_sample_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Stack per-sample ``sample()`` result dicts along a new batch axis."""
+    out: dict[str, Any] = {
+        "images": {k: np.stack([r["images"][k] for r in results]) for k in results[0]["images"]},
+        "actuations": {
+            k: np.stack([r["actuations"][k] for r in results]) for k in results[0]["actuations"]
+        },
+    }
+    if "strehls" in results[0]:
+        out["strehls"] = {
+            k: np.array([r["strehls"][k] for r in results]) for k in results[0]["strehls"]
+        }
+    return out
 
 
 class TelescopeSim:
@@ -78,6 +96,9 @@ class TelescopeSim:
 
     def __init__(self, components: _PipelineComponents) -> None:
         self._c = components
+        # Lazily-built jax-backend artifacts (see forward_fn / sample_batch).
+        self._forward: Any = None
+        self._batched_forward: Any = None
 
     # --- Construction entry points -----------------------------------------
 
@@ -270,6 +291,40 @@ class TelescopeSim:
                 self._c.correctors, coronagraph=self._c.coronagraph, atmos=atmos
             )
 
+        # 4-6) Taps + post-processing, actuation echo, Strehl — shared with
+        #      sample_batch() via _finalize_outputs.
+        result = self._finalize_outputs(
+            fp_results,
+            output_overrides=output_overrides,
+            meas_strehl=meas_strehl,
+            cum_opd_pre=cum_opd_pre,
+        )
+
+        # 7) Pupil-plane OPD readback. The cumulative-OPD stream computed
+        #    in step 2 already includes the atmosphere seed (when it
+        #    exposes phase_for) and every DM-backed corrector's surface×2,
+        #    so we just wrap it as an hcipy.Field for masked display.
+        if meas_pupil_opd:
+            result["pupil_opd"] = hcipy.Field(running_opd.copy(), self._c.pupil_grid)
+
+        return result
+
+    def _finalize_outputs(
+        self,
+        fp_results: dict[str, Any],
+        *,
+        output_overrides: Mapping[str, Mapping[str, Any]],
+        meas_strehl: bool,
+        cum_opd_pre: list[NDArray[np.float64]] | None,
+    ) -> dict[str, Any]:
+        """Steps 4-6 of ``sample()``: taps + post, actuation echo, Strehl.
+
+        Factored out so ``sample_batch()`` can run them per batch element
+        against device-batched propagation results with semantics identical
+        to ``sample()``. ``cum_opd_pre`` (per-corrector cumulative-OPD
+        snapshots from step 2) may be None when no target corrector uses a
+        residual-fit strategy.
+        """
         # 4) Run output taps + per-output post-processors.
         images: dict[str, NDArray] = {}
         for out_spec in self._c.outputs:
@@ -313,7 +368,14 @@ class TelescopeSim:
                 continue
             if c.target_strategy == "actuators":
                 actuator_echo[c.name] = np.asarray(c.actuators)
-            elif c.target_strategy == "actuators_plus_residual_fit":
+                continue
+            if cum_opd_pre is None:
+                raise RuntimeError(
+                    f"corrector {c.name!r} uses target_strategy="
+                    f"{c.target_strategy!r} but no cumulative-OPD snapshots "
+                    "were provided."
+                )
+            if c.target_strategy == "actuators_plus_residual_fit":
                 residual = np.asarray(c.fit_surface(cum_opd_pre[i]))
                 actuator_echo[c.name] = np.asarray(c.actuators) + residual
             elif c.target_strategy == "residual_fit_only":
@@ -337,14 +399,174 @@ class TelescopeSim:
                 strehls[name] = est.compute(fp_results[name].intensity)
             result["strehls"] = strehls
 
-        # 7) Pupil-plane OPD readback. The cumulative-OPD stream computed
-        #    in step 2 already includes the atmosphere seed (when it
-        #    exposes phase_for) and every DM-backed corrector's surface×2,
-        #    so we just wrap it as an hcipy.Field for masked display.
-        if meas_pupil_opd:
-            result["pupil_opd"] = hcipy.Field(running_opd.copy(), self._c.pupil_grid)
-
         return result
+
+    # --- Pure forward function + batch sampling (jax backend) ---------------
+
+    def forward_fn(self) -> Any:
+        """Pure jittable forward model (jax backend only), built once.
+
+        Returns a :class:`telescope_sim.backends.jax.forward.TelescopeForward`:
+        a pure function from caller-facing actuation values to raw summed
+        focal-plane intensities, exposing the ``actuations → opd`` and
+        ``opd → intensity`` stages separately (the latter is the hook for
+        external OPD such as atmosphere screens). Safe to ``jax.jit`` /
+        ``vmap`` / ``grad`` and compose into custom sampling strategies;
+        :meth:`sample_batch` is the packaged reference composition.
+
+        Raises ``NotImplementedError`` on the hcipy backend and for chains
+        with fit-role correctors (whose least-squares resolution runs
+        host-side in :meth:`sample`).
+        """
+        if self._c.backend != "jax":
+            raise NotImplementedError(
+                "forward_fn() requires backend='jax'; the hcipy backend has "
+                "no pure-function propagation path."
+            )
+        if self._forward is None:
+            # Deferred so the base package works without the [jax] extra.
+            from telescope_sim.backends.jax.forward import build_forward  # noqa: PLC0415
+
+            self._forward = build_forward(self._c)
+        return self._forward
+
+    def sample_batch(
+        self,
+        actuations: Mapping[str, ArrayLike] | None = None,
+        *,
+        output_overrides: Mapping[str, Mapping[str, Any]] | None = None,
+        meas_strehl: bool = False,
+        batch_size: int | None = None,
+    ) -> dict[str, Any]:
+        """Reference iid batch sampler: stacked ``sample()`` semantics.
+
+        Every array in ``actuations`` carries a leading batch dimension on
+        top of what :meth:`sample` accepts for that corrector; the returned
+        dict has the shape of a :meth:`sample` result with a leading batch
+        axis on every image, actuation echo, and Strehl value.
+
+        On the jax backend, propagation for the whole batch runs as one
+        jitted, vmapped device dispatch over :meth:`forward_fn`; output
+        taps, post-processors (including detector noise, which keeps its
+        host-side numpy RNG), actuation echoes, and Strehl run per sample
+        through the same code path ``sample()`` uses. On the hcipy backend
+        the same semantics come from a plain Python loop over
+        :meth:`sample`.
+
+        This is deliberately a *reference composition* — curriculum,
+        temporal-sequence, or RL samplers should compose
+        :meth:`forward_fn` directly in user code instead of extending this
+        method. Note JAX re-jits per batch shape: prefer a fixed batch
+        size (or pad) inside loops.
+
+        ``batch_size`` is only required when ``actuations`` is empty (an
+        at-rest batch); otherwise it must agree with the arrays' leading
+        dimension. Fit-role corrector chains are not supported on the jax
+        path — use :meth:`sample` (or the hcipy backend).
+        """
+        acts, n_batch = self._validate_batch_actuations(actuations, batch_size)
+
+        if self._c.backend != "jax":
+            return _stack_sample_results(
+                [
+                    self.sample(
+                        {k: v[b] for k, v in acts.items()},
+                        output_overrides=output_overrides,
+                        meas_strehl=meas_strehl,
+                    )
+                    for b in range(n_batch)
+                ]
+            )
+
+        forward = self.forward_fn()
+        if acts:
+            if self._batched_forward is None:
+                import jax  # noqa: PLC0415
+
+                self._batched_forward = jax.jit(jax.vmap(forward))
+            intensities = {
+                name: np.asarray(img) for name, img in self._batched_forward(acts).items()
+            }
+        else:
+            # At-rest batch: one propagation, replicated host-side.
+            intensities = {
+                name: np.broadcast_to(np.asarray(img), (n_batch, *np.shape(img)))
+                for name, img in forward({}).items()
+            }
+
+        # Residual-fit echo strategies need the per-corrector cumulative-OPD
+        # snapshots; recompute them host-side (mirrors sample() step 2 —
+        # fit-role correctors are already excluded by forward_fn()).
+        needs_opd = any(
+            c.target and c.target_strategy in ("actuators_plus_residual_fit", "residual_fit_only")
+            for c in self._c.correctors
+        )
+        results = []
+        for b in range(n_batch):
+            for c in self._c.correctors:
+                values = acts.get(c.name)
+                if values is None:
+                    c.flatten()
+                else:
+                    c.set_actuators(values[b])
+            cum_opd_pre: list[NDArray[np.float64]] | None = None
+            if needs_opd:
+                running = np.zeros(self._c.pupil_grid.size, dtype=np.float64)
+                cum_opd_pre = []
+                for c in self._c.correctors:
+                    cum_opd_pre.append(running.copy())
+                    mirror = _mirror_of(c)
+                    if mirror is not None:
+                        running = running + 2.0 * np.asarray(mirror.surface)
+            fp_results = {
+                name: FocalPlaneResult(intensity=intensities[name][b], wavefronts=[])
+                for name in self._c.focal_planes
+            }
+            results.append(
+                self._finalize_outputs(
+                    fp_results,
+                    output_overrides=dict(output_overrides or {}),
+                    meas_strehl=meas_strehl,
+                    cum_opd_pre=cum_opd_pre,
+                )
+            )
+        return _stack_sample_results(results)
+
+    def _validate_batch_actuations(
+        self,
+        actuations: Mapping[str, ArrayLike] | None,
+        batch_size: int | None,
+    ) -> tuple[dict[str, NDArray[np.float64]], int]:
+        """Coerce/validate ``sample_batch`` inputs; returns (arrays, batch size)."""
+        acts = {k: np.asarray(v, dtype=np.float64) for k, v in dict(actuations or {}).items()}
+        by_name = {c.name: c for c in self._c.correctors}
+        unknown = sorted(set(acts) - set(by_name))
+        if unknown:
+            raise ValueError(
+                f"unknown corrector(s) in actuations: {unknown}; defined: {list(by_name)}"
+            )
+        for name, values in acts.items():
+            n_act = int(by_name[name].n_actuators)
+            if values.ndim < 2 or int(np.prod(values.shape[1:])) != n_act:
+                raise ValueError(
+                    f"actuations[{name!r}]: expected a leading batch dimension "
+                    f"over per-sample actuations ({n_act} values each), got "
+                    f"shape {values.shape}"
+                )
+        sizes = {v.shape[0] for v in acts.values()}
+        if len(sizes) > 1:
+            raise ValueError(f"inconsistent batch sizes across actuations: {sorted(sizes)}")
+        n_batch = sizes.pop() if sizes else batch_size
+        if n_batch is None:
+            raise ValueError("empty actuations requires an explicit batch_size")
+        if batch_size is not None and batch_size != n_batch:
+            raise ValueError(
+                f"batch_size={batch_size} disagrees with the actuations' "
+                f"leading dimension {n_batch}"
+            )
+        if int(n_batch) < 1:
+            raise ValueError("batch size must be >= 1")
+        return acts, int(n_batch)
 
 
 __all__ = ["TelescopeSim"]

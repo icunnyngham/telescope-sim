@@ -92,6 +92,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `forward_fn` stages with a gradient-through-the-optics demo, and
   in-graph fit-role cancellation. README and the API reference now cover
   the JAX backend surface.
+- Tutorial 08 (`docs/tutorials/08_phase_retrieval.ipynb`): exporting
+  `forward_fn` as a zodiax/dLux-style differentiable model and using it
+  for gradient-based phase retrieval — recovering the full 45-parameter
+  piston/tip/tilt state of the 15-segment ELF ring from a single
+  broadband focal-plane frame in one 10%-bandwidth band at 1 µm, with
+  segment pistons up to ±4 waves of OPD (multi-start descent plus
+  integer wrap resolution), to nanometer-level residual OPD and a
+  corrected Strehl of ~1. Demonstrates why the odd segment count (no
+  twin-image ambiguity) and spectral bandwidth in a single frame
+  (piston wraps resolved) make the single-image problem well-posed.
 - CI installs the `[jax]` extra on Python >= 3.11 runners (with a loud
   import check) so the JAX backend suites run in CI instead of silently
   skipping; the docs builds install it too so autodoc can import the

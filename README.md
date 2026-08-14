@@ -26,16 +26,22 @@ model for gradient-based phase retrieval, calibration, and ML pipelines.
 
 ## Status
 
-**v2.3.0 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
+**v2.3.1 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
-generators, Zernike-mode DMs, vortex and vector-vortex coronagraphs, angular
-and physical focal planes, and multi-mode-fiber dual outputs. Every fixture
-outside the vortex-coronagraph and fiber paths also passes on the JAX backend
-at the same tolerances; vortex coronagraphs and the fiber output tap are
+generators, Zernike-mode DMs, vortex, vector-vortex, and classical Lyot
+coronagraphs, angular and physical focal planes, and multi-mode-fiber dual
+outputs. Every fixture outside the vortex-coronagraph and fiber paths also
+passes on the JAX backend at the same tolerances; the Lyot coronagraph runs
+on both backends, while vortex coronagraphs and the fiber output tap are
 currently HCIPy-only.
 
 ### What's new since v2.0.0
 
+- **Classical Lyot coronagraph** (v2.3.1) — a `lyot` coronagraph kind
+  (hard-edged focal-plane occulter + optional Lyot-stop sub-config) on
+  **both** compute backends: HCIPy via `hcipy.LyotCoronagraph`, JAX via
+  the same Soummer-2007 scheme folded into the propagation graph — so
+  `forward_fn` / `sample_batch` include it, differentiable end-to-end.
 - **JAX compute backend** (v2.3.0) — `backend: jax` runs the same YAML,
   correctors, outputs, and `sample()` on a jitted, wavelength-vmapped
   matrix-Fourier-transform core with float64-round-off parity against
@@ -107,8 +113,8 @@ out = sim.sample(actuations={"segments": ptt}, meas_strehl=True)
 ```
 
 See [docs/tutorials/](docs/tutorials) for runnable notebooks that exercise the
-canonical mini-ELF, vortex coronagraph, custom-pupil + Zernike DM, and fiber
-MMF paths.
+canonical mini-ELF, vortex and Lyot coronagraph, custom-pupil + Zernike DM,
+and fiber MMF paths.
 
 ## JAX compute backend (optional)
 

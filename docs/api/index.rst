@@ -67,6 +67,9 @@ Concrete implementations
 .. automodule:: telescope_sim.coronagraphs.standard
    :members:
 
+.. automodule:: telescope_sim.coronagraphs.lyot
+   :members:
+
 .. automodule:: telescope_sim.focal_planes.angular
    :members:
 

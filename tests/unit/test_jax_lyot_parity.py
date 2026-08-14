@@ -16,6 +16,7 @@ refused by the kernel builder).
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -24,7 +25,11 @@ import yaml
 
 pytest.importorskip("jax", reason="jax backend requires the optional [jax] extra")
 
-from tests.unit.test_jax_backend_parity import (  # noqa: E402
+# Sibling-module import that works under the bare ``pytest`` entry point
+# (no repo root on sys.path) — same pattern as tests/fixtures.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from test_jax_backend_parity import (  # noqa: E402
     ATOL,
     _widen_focal_planes,
     assert_image_parity,

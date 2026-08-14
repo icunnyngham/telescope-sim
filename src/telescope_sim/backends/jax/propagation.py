@@ -142,9 +142,11 @@ class FraunhoferMFT:
         self._science_intensity = _summed_intensity
         self._summed_intensity_coro = None
         if lyot is not None:
-            self._build_lyot_path(lyot, py, px, complex_dtype, real_dtype, w_in)
+            self._build_lyot_path(
+                lyot, py=py, px=px, complex_dtype=complex_dtype, real_dtype=real_dtype, w_in=w_in
+            )
 
-    def _build_lyot_path(self, lyot, py, px, complex_dtype, real_dtype, w_in):
+    def _build_lyot_path(self, lyot, *, py, px, complex_dtype, real_dtype, w_in):
         """Build the jitted Lyot-train propagation (see class docstring)."""
         mx, my = _separable_axes(lyot.mask_grid)
         spot2d = np.asarray(lyot.occulter, dtype=np.float64).reshape((my.size, mx.size))
@@ -188,7 +190,8 @@ class FraunhoferMFT:
 
         @jax.jit
         def _summed_intensity_coro(amplitude: jnp.ndarray, opd: jnp.ndarray) -> jnp.ndarray:
-            def one_lam(k1_l, k2_l, lam, norm_l, kf1_l, kf2_l, kb1_l, kb2_l, nf_l, nb_l):
+            def one_lam(operands):
+                k1_l, k2_l, lam, norm_l, kf1_l, kf2_l, kb1_l, kb2_l, nf_l, nb_l = operands
                 field = amplitude * jnp.exp(1j * (2.0 * jnp.pi / lam) * opd)
                 e_mask = nf_l * (kf1_l @ (field * w_in) @ kf2_l)
                 e_back = nb_l * (kb1_l @ ((spot * e_mask) * w_mask) @ kb2_l)
@@ -199,16 +202,18 @@ class FraunhoferMFT:
                 return norm_l * jnp.abs(e_focal) ** 2
 
             per_lam = jax.vmap(one_lam)(
-                self._k1,
-                self._k2,
-                self._lams,
-                self._int_norm,
-                kf1,
-                kf2,
-                kb1,
-                kb2,
-                norm_fwd,
-                norm_back,
+                (
+                    self._k1,
+                    self._k2,
+                    self._lams,
+                    self._int_norm,
+                    kf1,
+                    kf2,
+                    kb1,
+                    kb2,
+                    norm_fwd,
+                    norm_back,
+                )
             )
             return per_lam.sum(axis=0)
 

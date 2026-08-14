@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/telescope-sim.svg)](https://pypi.org/project/telescope-sim/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Composable, config-driven simulation of multi-aperture telescope PSFs, deformable
+Composable, config-driven simulation of telescope PSFs, deformable
 mirrors, coronagraphs, and fiber coupling — built on [HCIPy](https://hcipy.org),
 with an optional [JAX](https://docs.jax.dev) backend that makes the whole
 telescope differentiable.
@@ -29,8 +29,10 @@ model for gradient-based phase retrieval, calibration, and ML pipelines.
 **v2.3.0 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex and vector-vortex coronagraphs, angular
-and physical focal planes, and multi-mode-fiber dual outputs; every
-JAX-eligible fixture passes on the JAX backend at the same tolerances.
+and physical focal planes, and multi-mode-fiber dual outputs. Every fixture
+outside the vortex-coronagraph and fiber paths also passes on the JAX backend
+at the same tolerances; vortex coronagraphs and the fiber output tap are
+currently HCIPy-only.
 
 ### What's new since v2.0.0
 

@@ -6,6 +6,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- README/package-description framing: dropped the legacy "multi-aperture"
+  qualifier (configs may be multi-aperture; the package is not limited to
+  it), and the status line now states explicitly that vortex coronagraphs
+  and the fiber output tap are HCIPy-only rather than implying full
+  dual-backend coverage.
+
 ## [2.3.0] - 2026-08-13
 
 The dual-backend release: an optional JAX compute backend runs the same

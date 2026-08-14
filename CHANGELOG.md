@@ -6,6 +6,13 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-08-13
+
+The first dual-backend capability release: a classical Lyot coronagraph
+lands on the HCIPy and JAX backends together, sharing one config surface
+and the exact same mask geometry, with the JAX side in-graph —
+batchable and differentiable through `forward_fn` / `sample_batch`.
+
 ### Added
 
 - `lyot` coronagraph: a classical Lyot train (hard-edged focal-plane
@@ -1088,7 +1095,8 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.1...v2.2.0
 [2.1.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.0...v2.1.1

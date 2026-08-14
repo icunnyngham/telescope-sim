@@ -6,6 +6,25 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `lyot` coronagraph: a classical Lyot train (hard-edged focal-plane
+  occulter on a small dedicated mask grid + optional Lyot-stop aperture
+  sub-config), supported on BOTH compute backends. The hcipy backend
+  wraps `hcipy.LyotCoronagraph`; the jax backend folds the same
+  Soummer-2007 semi-analytical scheme (Babinet subtraction through
+  matched pupil↔mask MFT kernels) into the propagation graph, so
+  `sample()`, `forward_fn`, and `sample_batch` all include the
+  coronagraph in-graph, differentiable and batchable. Both backends
+  share the exact same geometry arrays; cross-backend parity is held to
+  the standard 1e-12 bar (observed ~1e-15). The reference PSF continues
+  to bypass the coronagraph. New validation config
+  `fixtures/configs/12_vampires_lyot.yaml` expresses the VAMPIRES
+  CLC-3 instrument mode (no golden digest — the legacy variant never
+  worked; validated by parity + physics checks instead).
+- `TelescopeSim.coronagraph` convenience accessor (alongside the existing
+  `correctors` / `focal_planes` / `aperture` properties).
+
 ### Changed
 
 - README/package-description framing: dropped the legacy "multi-aperture"

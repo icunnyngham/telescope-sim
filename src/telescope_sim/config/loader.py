@@ -194,6 +194,10 @@ def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # 
         fp = cls(name=fp_name, **payload)
         if backend == "jax":
             fp._precision = config.precision
+            # Hand the bound coronagraph over before build() so its train
+            # can be folded into this plane's propagation kernels (the
+            # reference PSF below still bypasses it by convention).
+            fp._coronagraph = coronagraph
         fp.build(pupil_grid, aperture_result.field)
         for c in corrector_chain:
             c.flatten()

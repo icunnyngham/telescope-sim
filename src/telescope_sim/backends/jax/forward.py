@@ -184,7 +184,9 @@ class TelescopeForward:
         opd = jnp.asarray(opd, dtype=self._dtype)
         out: dict[str, jnp.ndarray] = {}
         for name, (mft, amplitude) in self._planes.items():
-            out[name] = mft._summed_intensity(amplitude, opd.reshape(mft.pupil_shape))
+            # _science_intensity includes the coronagraph train when one is
+            # configured (lyot); otherwise it aliases the plain path.
+            out[name] = mft._science_intensity(amplitude, opd.reshape(mft.pupil_shape))
         return out
 
     def __call__(self, actuations: Mapping[str, ArrayLike] | None = None) -> dict[str, jnp.ndarray]:

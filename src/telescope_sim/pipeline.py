@@ -143,6 +143,10 @@ class TelescopeSim:
     def aperture(self) -> ApertureResult:
         return self._c.aperture
 
+    @property
+    def coronagraph(self) -> Coronagraph | None:
+        return self._c.coronagraph
+
     # --- Main entry point --------------------------------------------------
 
     def sample(  # noqa: PLR0912,PLR0915  (orchestration: branches + statements reflect chain stages)

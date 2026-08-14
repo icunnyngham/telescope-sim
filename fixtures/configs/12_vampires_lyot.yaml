@@ -1,0 +1,83 @@
+# Fixture 12: VAMPIRES classical Lyot coronagraph (F750, 35 Zernike modes).
+#
+# The real instrument mode the legacy fixture attempted: SCExAO pupil via
+# miles_synthpsf, CLC-3 occulting spot, undersized/oversized Lyot stop from
+# the same parametric pupil generator, F750 filter at 5 wavelengths.
+#
+# UNLIKE the other numbered configs there is NO golden digest: the legacy
+# variant never produced working output, so this config is validated by
+# cross-backend parity + physics checks (tests/fixtures/test_vampires_lyot.py)
+# instead of a legacy regression comparison.
+#
+# Occulter: CLC-3 is a 69 um-radius spot; at the 0.919 arcsec/mm field-stop
+# plate scale that is 0.138 mm * 0.919 = 0.126822 arcsec = 6.1485e-7 rad.
+#
+# Lyot stop: the legacy setup's generate_pupil(outer=0.9, inner=0.48,
+# scale=1.2) used a pupil-module revision where `scale` sized spiders AND
+# actuator masks, and `inner` was a fraction of the undersized diameter.
+# Translated to the committed helper's semantics (inner as a fraction of
+# the TRUE diameter; spiders under `spider_scale`): inner = 0.48 * 0.9 =
+# 0.432, scale = spider_scale = 1.2.
+#
+# The detector-noise block the legacy config carried is deliberately
+# omitted so the parity checks stay deterministic.
+
+pupil:
+  resolution: 256
+  extent: 8.1795   # 1.05 * 7.79
+
+aperture:
+  type: external_pupil
+  module: test_fixtures/helpers/miles_synthpsf/2024-05_vampires_vvc.py
+  function: generate_pupil
+  mode: field
+  kwargs:
+    outer: 0.9835858585858586    # 7.79 / 7.92
+  area: 190.6630
+
+correctors:
+  zernike_dm:
+    type: zernike
+    n_modes: 35
+    zernike_diameter: 7.79
+    starting_mode: 2
+    actuate_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [zernike_dm]
+
+coronagraph:
+  type: lyot
+  occulter_diameter: 6.1485e-7
+  mask_resolution: 128
+  lyot:
+    type: external_pupil
+    module: test_fixtures/helpers/miles_synthpsf/2024-05_vampires_vvc.py
+    function: generate_pupil
+    mode: field
+    kwargs:
+      outer: 0.9
+      inner: 0.432
+      scale: 1.2
+      spider_scale: 1.2
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 7.48e-7
+    focal_extent: 0.768       # 1e-3 * 6 * 128
+    focal_res: 128
+    fractional_bandwidth: 0.06417112299  # 48e-9 / 7.48e-7
+    num_samples: 5
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing:
+      - type: per_sample_norm
+
+strehl_core_rad: null

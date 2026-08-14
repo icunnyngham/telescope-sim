@@ -15,8 +15,12 @@ Consequences vs the hcipy backend:
   (``fiber_dual``) are gated off at config time.
 - ``atmos`` must expose ``.phase_for(lam)`` (OPD-defined screens); a plain
   wavefront-callable cannot be applied to a summed-OPD propagation.
-- A configured coronagraph (other than ``identity``) is rejected at config
-  time; this module double-checks at sample time.
+- Coronagraphs: ``identity`` and ``lyot`` are supported. The ``lyot``
+  train is folded into the propagation kernels at build time (the loader
+  hands the bound coronagraph to the focal plane before ``build()``), so
+  the science path applies it in-graph while the reference PSF keeps the
+  plain path. Any other coronagraph kind is rejected at config time via
+  ``supported_backends``; this module double-checks at sample time.
 """
 
 from __future__ import annotations
@@ -63,11 +67,16 @@ def _chain_opd(
 
 
 def _check_coronagraph(coronagraph: Any | None) -> None:
-    if coronagraph is not None and getattr(coronagraph, "name", None) != "identity":
+    if coronagraph is not None and getattr(coronagraph, "name", None) not in ("identity", "lyot"):
         raise NotImplementedError(
             f"coronagraph {getattr(coronagraph, 'name', coronagraph)!r} is "
             "not supported on the 'jax' backend."
         )
+
+
+def _wants_coronagraph(coronagraph: Any | None) -> bool:
+    """True when the science path must propagate through a coronagraph train."""
+    return coronagraph is not None and getattr(coronagraph, "name", None) != "identity"
 
 
 class _JaxPropagationMixin:
@@ -92,6 +101,11 @@ class _JaxPropagationMixin:
                 "real transmission amplitude); use the hcipy backend for "
                 "apodized/complex pupils."
             )
+        # The loader hands the pipeline's bound coronagraph to jax focal
+        # planes before build() (like _precision) so the coronagraph train
+        # can be folded into this plane's per-wavelength kernels.
+        coronagraph = getattr(self, "_coronagraph", None)
+        _check_coronagraph(coronagraph)
         setup = self.lam_setup
         self._mft = FraunhoferMFT(
             self._pupil_grid,
@@ -99,6 +113,7 @@ class _JaxPropagationMixin:
             setup.filter_lams,
             focal_length=focal_length,
             dtype=self._precision,
+            lyot=coronagraph if _wants_coronagraph(coronagraph) else None,
         )
         self._amplitude = aperture.astype(np.float64) * amplitude_scale
 
@@ -111,8 +126,15 @@ class _JaxPropagationMixin:
     ) -> FocalPlaneResult:
         assert self._mft is not None and self._amplitude is not None
         _check_coronagraph(coronagraph)
+        use_coro = _wants_coronagraph(coronagraph)
+        if use_coro and self._mft._summed_intensity_coro is None:
+            raise RuntimeError(
+                f"focal plane {self.name!r} was built without the coronagraph "
+                "bound; build the pipeline through the loader (build/from_yaml) "
+                "so the coronagraph train is folded into the kernels."
+            )
         opd = _chain_opd(corrector_chain, atmos, self._amplitude.size)
-        intensity = self._mft.summed_intensity(self._amplitude, opd)
+        intensity = self._mft.summed_intensity(self._amplitude, opd, coronagraph=use_coro)
         return FocalPlaneResult(intensity=intensity, wavefronts=[])
 
     def propagate(self, wf: Any) -> Any:

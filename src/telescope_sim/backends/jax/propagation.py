@@ -65,6 +65,21 @@ class FraunhoferMFT:
         ``"float32"`` for half-memory kernels and faster propagation at
         single-precision accuracy. Kernels are built in the matching
         complex dtype and inputs are cast on the way in.
+    lyot
+        Optional bound ``lyot`` coronagraph (an object exposing
+        ``mask_grid``, ``occulter``, ``lyot_field``, and ``focal_length``
+        — see ``coronagraphs/lyot.py``). When given, a second jitted
+        propagation path applies the classical Lyot train in the pupil
+        plane before the final transform, per wavelength:
+
+            E_lyot = L · (E − P⁻[occulter · P⁺[E]])
+
+        with P⁺/P⁻ matrix Fourier transforms between the pupil and the
+        small mask grid mirroring ``hcipy.FraunhoferPropagator``'s
+        forward/backward conventions (this is Babinet's principle — the
+        same scheme :class:`hcipy.LyotCoronagraph` uses, sharing the
+        exact geometry arrays). ``summed_intensity(..., coronagraph=True)``
+        selects it; the plain path remains for the reference PSF.
     """
 
     def __init__(
@@ -75,6 +90,7 @@ class FraunhoferMFT:
         *,
         focal_length: float = 1.0,
         dtype: str = "float64",
+        lyot: Any | None = None,
     ) -> None:
         if dtype not in ("float64", "float32"):
             raise ValueError(f"dtype must be 'float64' or 'float32', got {dtype!r}")
@@ -119,11 +135,92 @@ class FraunhoferMFT:
             return per_lam.sum(axis=0)
 
         self._summed_intensity = _summed_intensity
+        # Science-path propagation: identical to _summed_intensity unless a
+        # coronagraph is installed below. forward_fn and the focal planes'
+        # per-sample path route through this; the reference PSF always uses
+        # _summed_intensity (coronagraph bypassed by convention).
+        self._science_intensity = _summed_intensity
+        self._summed_intensity_coro = None
+        if lyot is not None:
+            self._build_lyot_path(lyot, py, px, complex_dtype, real_dtype, w_in)
+
+    def _build_lyot_path(self, lyot, py, px, complex_dtype, real_dtype, w_in):
+        """Build the jitted Lyot-train propagation (see class docstring)."""
+        mx, my = _separable_axes(lyot.mask_grid)
+        spot2d = np.asarray(lyot.occulter, dtype=np.float64).reshape((my.size, mx.size))
+
+        stop = None
+        if lyot.lyot_field is not None:
+            stop_arr = np.asarray(lyot.lyot_field)
+            if np.iscomplexobj(stop_arr):
+                raise ValueError(
+                    "complex Lyot-stop fields are not supported on the 'jax' "
+                    "backend; use the hcipy backend for complex stops."
+                )
+            stop = jnp.asarray(stop_arr.reshape(self.pupil_shape), dtype=real_dtype)
+
+        mask_weights = np.atleast_1d(np.asarray(lyot.mask_grid.weights, dtype=np.float64))
+        if mask_weights.size > 1 and not np.all(mask_weights == mask_weights.flat[0]):
+            raise ValueError("non-uniform mask-grid weights are not supported")
+        w_mask = float(mask_weights.flat[0])
+
+        # Per-λ MFT kernel pairs between the pupil and the small mask grid,
+        # mirroring hcipy.FraunhoferPropagator: forward kernel exp(-i·s·u·x)
+        # with norm 1/(i·λ·f); backward kernel exp(+i·s·x·u) with norm
+        # i/(λ·f) (the M†-weights inverse: w_mask/(λf)² times i·λ·f).
+        f_c = float(lyot.focal_length)
+        lams = self.filter_lams
+        s_c = 2.0 * np.pi / (f_c * lams)  # (Nλ,)
+        kf1 = np.exp(-1j * s_c[:, None, None] * my[None, :, None] * py[None, None, :])
+        kf2 = np.exp(-1j * s_c[:, None, None] * px[None, :, None] * mx[None, None, :])
+        kb1 = np.exp(1j * s_c[:, None, None] * py[None, :, None] * my[None, None, :])
+        kb2 = np.exp(1j * s_c[:, None, None] * mx[None, :, None] * px[None, None, :])
+        norm_fwd = 1.0 / (1j * f_c * lams)
+        norm_back = 1j / (f_c * lams)
+
+        kf1 = jnp.asarray(kf1, dtype=complex_dtype)
+        kf2 = jnp.asarray(kf2, dtype=complex_dtype)
+        kb1 = jnp.asarray(kb1, dtype=complex_dtype)
+        kb2 = jnp.asarray(kb2, dtype=complex_dtype)
+        norm_fwd = jnp.asarray(norm_fwd, dtype=complex_dtype)
+        norm_back = jnp.asarray(norm_back, dtype=complex_dtype)
+        spot = jnp.asarray(spot2d, dtype=real_dtype)
+
+        @jax.jit
+        def _summed_intensity_coro(amplitude: jnp.ndarray, opd: jnp.ndarray) -> jnp.ndarray:
+            def one_lam(k1_l, k2_l, lam, norm_l, kf1_l, kf2_l, kb1_l, kb2_l, nf_l, nb_l):
+                field = amplitude * jnp.exp(1j * (2.0 * jnp.pi / lam) * opd)
+                e_mask = nf_l * (kf1_l @ (field * w_in) @ kf2_l)
+                e_back = nb_l * (kb1_l @ ((spot * e_mask) * w_mask) @ kb2_l)
+                e_lyot = field - e_back
+                if stop is not None:
+                    e_lyot = stop * e_lyot
+                e_focal = k1_l @ (e_lyot * w_in) @ k2_l
+                return norm_l * jnp.abs(e_focal) ** 2
+
+            per_lam = jax.vmap(one_lam)(
+                self._k1,
+                self._k2,
+                self._lams,
+                self._int_norm,
+                kf1,
+                kf2,
+                kb1,
+                kb2,
+                norm_fwd,
+                norm_back,
+            )
+            return per_lam.sum(axis=0)
+
+        self._summed_intensity_coro = _summed_intensity_coro
+        self._science_intensity = _summed_intensity_coro
 
     def summed_intensity(
         self,
         amplitude: NDArray[np.floating],
         opd: NDArray[np.floating],
+        *,
+        coronagraph: bool = False,
     ) -> NDArray[np.float64]:
         """Sum of per-wavelength focal intensities for a pupil field.
 
@@ -134,11 +231,20 @@ class FraunhoferMFT:
             2-D.
         opd
             Pupil-plane optical path difference in meters, flat or 2-D.
+        coronagraph
+            Propagate through the installed coronagraph train (requires a
+            ``lyot`` object at construction). False — the reference-PSF
+            convention — propagates the plain perfect-lens path.
 
         Returns
         -------
         (focal_res_y, focal_res_x) array in this propagator's real dtype.
         """
+        if coronagraph and self._summed_intensity_coro is None:
+            raise RuntimeError(
+                "this propagator was built without a coronagraph; construct "
+                "FraunhoferMFT with lyot=... to enable the coronagraphic path."
+            )
         amp = jnp.asarray(
             np.asarray(amplitude, dtype=np.float64).reshape(self.pupil_shape),
             dtype=self.real_dtype,
@@ -146,7 +252,8 @@ class FraunhoferMFT:
         opd2d = jnp.asarray(
             np.asarray(opd, dtype=np.float64).reshape(self.pupil_shape), dtype=self.real_dtype
         )
-        return np.asarray(self._summed_intensity(amp, opd2d))
+        fn = self._summed_intensity_coro if coronagraph else self._summed_intensity
+        return np.asarray(fn(amp, opd2d))
 
 
 __all__ = ["FraunhoferMFT"]

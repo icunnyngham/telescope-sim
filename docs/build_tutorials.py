@@ -183,8 +183,11 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "):\n"
             "    img = out_i['images']['psf'][..., 0]\n"
             "    vmax = float(img.max())\n"
+            "    floor = max(vmax * 1e-4, 1e-3)\n"
+            "    # Clip zero/negative counts to the LogNorm floor (they are 'bad'\n"
+            "    # under LogNorm and would render as blank specks).\n"
             "    im = ax.imshow(\n"
-            "        img, norm=LogNorm(vmin=max(vmax * 1e-4, 1e-3), vmax=vmax),\n"
+            "        np.maximum(img, floor), norm=LogNorm(vmin=floor, vmax=vmax),\n"
             "        cmap='inferno',\n"
             "    )\n"
             "    ax.set_title(title)\n"
@@ -363,13 +366,14 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "plt.show()\n"
         ),
         _md(
-            "### Dual-backend: the Lyot train is in the JAX graph\n\n"
-            "Unlike the vortex kinds (currently HCIPy-only), `lyot` runs on "
-            "both compute backends: the same config on `backend='jax'` folds "
-            "the occulter/stop train into the propagation kernels, so "
-            "`sample()`, `forward_fn`, and `sample_batch` all include it — "
-            "batched, jitted, and differentiable. The two backends share the "
-            "exact same geometry arrays and agree to float64 round-off."
+            "### Dual-backend: the coronagraph train is in the JAX graph\n\n"
+            "Every coronagraph kind — `lyot` shown here, and the vortex kinds "
+            "too — runs on both compute backends: the same config on "
+            "`backend='jax'` folds the coronagraph train into the propagation "
+            "kernels, so `sample()`, `forward_fn`, and `sample_batch` all "
+            "include it — batched, jitted, and differentiable. The two "
+            "backends share the exact same geometry arrays and agree to "
+            "float64 round-off."
         ),
         _code(
             "import jax\n"
@@ -1343,8 +1347,11 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "for b, ax in enumerate(axes):\n"
             "    img = out['images']['psf'][b, ..., 0]\n"
             "    vmax = float(img.max())\n"
-            "    im = ax.imshow(img, cmap='inferno',\n"
-            "                   norm=LogNorm(vmin=max(vmax * 1e-4, 1e-3), vmax=vmax))\n"
+            "    floor = max(vmax * 1e-4, 1e-3)\n"
+            "    # Clip zero-count pixels to the LogNorm floor (zeros are 'bad'\n"
+            "    # under LogNorm and would render as blank specks).\n"
+            "    im = ax.imshow(np.maximum(img, floor), cmap='inferno',\n"
+            "                   norm=LogNorm(vmin=floor, vmax=vmax))\n"
             "    ax.set_title(f\"flux={fluxes[b]:.0e} — S={out['strehls']['filter1'][b]:.3f}\")\n"
             "    ax.set_axis_off()\n"
             "    fig.colorbar(im, ax=ax, shrink=0.7, label='counts')\n"
@@ -1476,10 +1483,10 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "same tolerances as hcipy.\n"
             "- **jit recompiles per batch shape** — keep batch sizes fixed "
             "(or pad) inside training loops.\n"
-            "- Components with no JAX path (vortex coronagraphs, the "
-            "`fiber_dual` tap, atmospheres without `.phase_for`) are rejected "
-            "at config time with clear errors; the hcipy backend remains the "
-            "fully general path.\n"
+            "- Components with no JAX path (the `fiber_dual` tap, "
+            "atmospheres without `.phase_for`) are rejected at config time "
+            "with clear errors; the hcipy backend remains the fully general "
+            "path.\n"
             "- Custom linear correctors work automatically: the backend "
             "probes `set_actuators` numerically at build time, so anything "
             "whose surface is linear in its commands folds into the forward "
@@ -1552,7 +1559,7 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             '    "focal_planes": {\n'
             '        "band_1um": {\n'
             '            "type": "angular", "central_lam": 1.0e-6,\n'
-            '            "focal_extent": 1.0, "focal_res": 128,\n'
+            '            "focal_extent": 2.0, "focal_res": 160,\n'
             '            "fractional_bandwidth": 0.10, "num_samples": 13,\n'
             "        }\n"
             "    },\n"
@@ -1590,8 +1597,9 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "telescope like any other dLux model.\n\n"
             "`model()` follows the dLux convention of returning the "
             "observation — here the flux-normalized broadband frame. The "
-            "measurement we will fit against is the same model evaluated at "
-            "the true state."
+            "measurement we will fit against is the model evaluated at the "
+            "true state, detected at a realistic photon budget (10⁷ photons "
+            "of shot noise)."
         ),
         _code(
             "import equinox as eqx\n"
@@ -1614,13 +1622,26 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "        return {name: img / img.sum() for name, img in images.items()}\n"
             "\n"
             "\n"
-            "model = PTTModel(sim)                   # parameters at zero: the starting guess\n"
-            "data = PTTModel(sim, ptt_true).model()  # the single measured broadband frame\n"
+            "model = PTTModel(sim)  # parameters at zero: the starting guess\n"
+            "\n"
+            "# The single measured broadband frame: the true state rendered and\n"
+            "# detected at a realistic photon budget - 1e7 photons of shot noise.\n"
+            "noise_key = jax.random.PRNGKey(7)\n"
+            "\n"
+            "\n"
+            "def measure(images):\n"
+            "    counts = {name: jax.random.poisson(jax.random.fold_in(noise_key, i), img * 1e7)\n"
+            "              for i, (name, img) in enumerate(sorted(images.items()))}\n"
+            "    return {name: c / c.sum() for name, c in counts.items()}\n"
+            "\n"
+            "\n"
+            "data = measure(PTTModel(sim, ptt_true).model())\n"
             "\n"
             "fig, ax = plt.subplots(figsize=(5.2, 4.2))\n"
             'img = np.asarray(data["band_1um"])\n'
             "peak = float(img.max())\n"
-            'im = ax.imshow(img, cmap="inferno", norm=LogNorm(vmin=peak * 1e-6, vmax=peak))\n'
+            'im = ax.imshow(np.maximum(img, peak * 1e-6), cmap="inferno",\n'
+            "               norm=LogNorm(vmin=peak * 1e-6, vmax=peak))\n"
             'ax.set_title("the measured frame — everything the fit gets to see")\n'
             "ax.set_axis_off()\n"
             "fig.colorbar(im, ax=ax, fraction=0.046)\n"
@@ -1799,6 +1820,573 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "- Runtime scales with starts × iterations, but every start "
             "shares one jitted program — widening the search is cheap, "
             "especially on accelerators."
+        ),
+    ],
+    "09_differentiable_fast_furious": [
+        _md(
+            "# 9. Differentiable Fast & Furious\n\n"
+            "Fast & Furious¹² is a celebrated focal-plane wavefront sensing "
+            "algorithm: from just a science image, a *tiny known DM move*, and "
+            "a second image, it reconstructs the wavefront — no wavefront "
+            "sensor, no defocus diversity, no extra hardware. The catch is the "
+            "machinery: a weak-phase linearization, even/odd image algebra, "
+            "regularized inversions and filtering, and with them hard limits — "
+            "aberrations below ~1 radian and a symmetric, unaberrated-amplitude "
+            "pupil.\n\n"
+            "Two ways past those limits have been shown: extending the "
+            "algebra to specific symmetric coronagraphs, or replacing the "
+            "estimator outright with a deep neural network trained on the "
+            "instrument model — the sequential-diversity analog³ validated "
+            "on the SCExAO optical bench with exactly these inputs. This "
+            "tutorial takes a third path: **gradient descent through the "
+            "telescope model itself**. The raw F&F inputs — frame, known "
+            "nudge, frame — go into a generic least-squares loss, and "
+            "`jit(vmap(grad))` does the rest. No linearization means no ~1 rad "
+            "ceiling: we recover a wavefront of **1.8 rad rms** (Strehl ≈ 4%) "
+            "to nanometer residuals in one shot, through photon noise, and "
+            "close the loop at gain 1.\n\n"
+            "Why does F&F need two frames at all? A centrosymmetric pupil "
+            "(circular, obstructed, symmetric spiders — most telescopes) has a "
+            "*twin-image ambiguity*: the wavefront φ(x) and its parity twin "
+            "−φ(−x) produce **pixel-identical** PSFs. In Zernike terms the twin "
+            "negates every even-azimuthal-order mode (focus, astigmatism, "
+            "spherical) and keeps the odd ones — so a single in-focus image "
+            "cannot tell the two apart. The second frame, taken after a known "
+            "DM move, breaks the tie: the twin predicts the wrong second image "
+            "unless the move has zero even content. We will see all of this "
+            "directly.\n\n"
+            "This notebook runs in **two acts**. Act 1 is the F&F-equivalent "
+            "workflow on a plain telescope — without the original "
+            "algorithm's caveats. Act 2 sends the *same recipe, unchanged*, "
+            "through a **vector vortex coronagraph**, where the linear "
+            "machinery cannot go at all — and ends on a twist the "
+            "coronagraph's own symmetry provides.\n\n"
+            'Install the pieces with `pip install "telescope-sim[jax]" zodiax '
+            "optax` (zodiax brings equinox; Python ≥ 3.11).\n\n"
+            "---\n"
+            "¹ C. U. Keller *et al.*, “Extremely fast focal-plane wavefront "
+            "sensing for extreme adaptive optics,” Proc. SPIE 8447, 844721 "
+            "(2012).\n\n"
+            "² V. Korkiakoski *et al.*, “Fast & Furious focal-plane wavefront "
+            "sensing,” Appl. Opt. 53, 4565 (2014).\n\n"
+            "³ A deep-learning analog of F&F using the same "
+            "two-frames-plus-move inputs, validated on the SCExAO optical "
+            "bench: M. Bottom *et al.*, “Sequential coronagraphic low-order "
+            "wavefront control,” AO4ELT7 proceedings (2023)."
+        ),
+        _code(
+            "import hcipy\n"
+            "import numpy as np\n"
+            "import matplotlib.pyplot as plt\n"
+            "from matplotlib.colors import LogNorm\n"
+            "from telescope_sim.config.loader import build\n"
+            "from telescope_sim.config.schema import SimConfig\n"
+            "from telescope_sim.helpers.diagnostics import plot_opd_and_psfs\n"
+            "\n"
+            "# A deliberately even (centrosymmetric) pupil: 8 m circular aperture,\n"
+            "# 30% central obstruction, 4 symmetric spiders — built by handing the\n"
+            "# stock HCIPy generator to the external_pupil aperture. The corrector\n"
+            "# is a 35-mode Zernike DM (Noll 2-36), observed through one 6% band\n"
+            "# at 750 nm.\n"
+            "config = {\n"
+            '    "backend": "jax",\n'
+            '    "pupil": {"resolution": 256, "extent": 8.4},\n'
+            '    "aperture": {\n'
+            '        "type": "external_pupil", "module": "hcipy",\n'
+            '        "function": "make_obstructed_circular_aperture",\n'
+            '        "mode": "callable", "supersample": 16,\n'
+            '        "kwargs": {"pupil_diameter": 8.0, "central_obscuration_ratio": 0.30,\n'
+            '                   "num_spiders": 4, "spider_width": 0.20},\n'
+            '        "area": 45.7,\n'
+            "    },\n"
+            '    "correctors": {\n'
+            '        "dm": {\n'
+            '            "type": "zernike", "n_modes": 35, "zernike_diameter": 8.0,\n'
+            '            "actuate_scale": 1.0e-6,\n'
+            '            "wavefront_role": "actuate",\n'
+            '            "target_strategy": "actuators", "target": True,\n'
+            "        }\n"
+            "    },\n"
+            '    "corrector_chain": ["dm"],\n'
+            '    "focal_planes": {\n'
+            '        "band_750": {\n'
+            '            "type": "angular", "central_lam": 0.75e-6,\n'
+            '            "focal_extent": 0.768, "focal_res": 128,\n'
+            '            "fractional_bandwidth": 0.06, "num_samples": 5,\n'
+            "        }\n"
+            "    },\n"
+            '    "outputs": {\n'
+            '        "psf": {"tap": {"type": "intensity", "focal_planes": ["band_750"]},\n'
+            '                "post_processing": [{"type": "max_intensity_norm"}]}\n'
+            "    },\n"
+            '    "strehl_method": "matched_filter",\n'
+            '    "strehl_core_rad": 5.6e-7,\n'
+            "}\n"
+            "sim = build(SimConfig.model_validate(config))\n"
+            "\n"
+            "# The unknown state: 35 Zernike coefficients, about 1.8 rad rms of\n"
+            "# wavefront — far beyond the ~1 rad weak-phase limit of classical\n"
+            "# focal-plane sensing. Strehl is a few percent.\n"
+            "rng = np.random.default_rng(0)\n"
+            "coeffs_true = rng.normal(0.0, 0.06, 35)\n"
+            "\n"
+            'out = sim.sample({"dm": coeffs_true}, meas_strehl=True, meas_pupil_opd=True)\n'
+            "plot_opd_and_psfs(sim, out,\n"
+            '                  suptitle="The unknown wavefront and the frame it produces")\n'
+            "plt.show()\n"
+        ),
+        _md(
+            "## The twin: why one frame is not enough\n\n"
+            "Build the parity twin — negate the even-azimuthal-order "
+            "coefficients, keep the odd — and render both. The two wavefronts "
+            "are entirely different, yet their PSFs agree to machine precision: "
+            "no amount of fitting a single frame can choose between them."
+        ),
+        _code(
+            "import jax\n"
+            "import jax.numpy as jnp\n"
+            "\n"
+            "# Parity of Z_n^m under point reflection is (-1)^m: the twin\n"
+            "# -phi(-x) negates even-m modes and keeps odd-m modes.\n"
+            "m_orders = np.array([hcipy.noll_to_zernike(i + 2)[1] for i in range(35)])\n"
+            "twin_sign = np.where(np.abs(m_orders) % 2 == 1, 1.0, -1.0)\n"
+            "coeffs_twin = twin_sign * coeffs_true\n"
+            "\n"
+            "forward = sim.forward_fn()\n"
+            "\n"
+            "\n"
+            "def frame(coeffs):\n"
+            '    img = forward({"dm": jnp.asarray(coeffs)})["band_750"]\n'
+            "    return img / img.sum()  # flux-normalized: photometry-free\n"
+            "\n"
+            "\n"
+            "img_true, img_twin = np.asarray(frame(coeffs_true)), np.asarray(frame(coeffs_twin))\n"
+            'print(f"twin max image difference: {np.abs(img_true - img_twin).max():.2e} "\n'
+            '      f"(peak {img_true.max():.2e})")\n'
+            "\n"
+            "fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))\n"
+            "peak = img_true.max()\n"
+            "for ax, img, title in [\n"
+            '    (axes[0], img_true, "PSF of the true wavefront"),\n'
+            '    (axes[1], img_twin, "PSF of the parity twin"),\n'
+            '    (axes[2], np.abs(img_true - img_twin) + peak * 1e-16, "|difference|"),\n'
+            "]:\n"
+            '    im = ax.imshow(img, cmap="inferno", norm=LogNorm(vmin=peak * 1e-7, vmax=peak))\n'
+            "    ax.set_title(title)\n"
+            '    ax.axis("off")\n'
+            "    fig.colorbar(im, ax=ax, fraction=0.046)\n"
+            "fig.tight_layout()\n"
+            "plt.show()\n"
+        ),
+        _md(
+            "## The measurement: frame, nudge, frame\n\n"
+            "The F&F acquisition, verbatim: take a frame, command a small "
+            "*random* DM move (a fraction of a radian — the star stays on "
+            "target), take a second frame. Both frames are detected at a "
+            "10⁶-photon budget — the shot-noise speckle is plainly visible in "
+            "the wings. Wrapping `forward_fn` in a `zodiax.Base` module makes "
+            "the coefficient vector a model parameter, dLux-style; the known "
+            "move enters as an offset at evaluation time."
+        ),
+        _code(
+            "import equinox as eqx\n"
+            "import optax\n"
+            "import zodiax as zdx\n"
+            "\n"
+            "\n"
+            "class FFModel(zdx.Base):\n"
+            "    coeffs: jax.Array  # (35,) Zernike coefficients — the free parameters\n"
+            "    forward: object    # the telescope's pure forward model (static)\n"
+            "\n"
+            "    def __init__(self, sim, coeffs=None):\n"
+            "        self.forward = sim.forward_fn()\n"
+            "        self.coeffs = jnp.zeros(35) if coeffs is None"
+            " else jnp.asarray(coeffs, float)\n"
+            "\n"
+            "    def model(self, offset=0.0):\n"
+            '        img = self.forward({"dm": self.coeffs + offset})["band_750"]\n'
+            "        return img / img.sum()\n"
+            "\n"
+            "\n"
+            "N_PHOTONS = 1e6\n"
+            "noise_key = jax.random.PRNGKey(7)\n"
+            "\n"
+            "\n"
+            "def measure(img, k):\n"
+            "    counts = jax.random.poisson(jax.random.fold_in(noise_key, k), img * N_PHOTONS)\n"
+            "    return counts / counts.sum()\n"
+            "\n"
+            "\n"
+            "truth = FFModel(sim, coeffs_true)   # plays the sky + telescope\n"
+            "model = FFModel(sim)                # what the fit gets to adjust\n"
+            "\n"
+            "start_rng = np.random.default_rng(99)\n"
+            "move = jnp.asarray(start_rng.normal(0.0, 0.01, 35))  # the known nudge\n"
+            "\n"
+            "frame_1 = measure(truth.model(), 0)\n"
+            "frame_2 = measure(truth.model(offset=move), 1)\n"
+            "\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(9.6, 4.2))\n"
+            "for ax, img, title in [\n"
+            '    (axes[0], np.asarray(frame_1), "frame 1"),\n'
+            '    (axes[1], np.asarray(frame_2), "frame 2, after the known nudge"),\n'
+            "]:\n"
+            "    peak = float(img.max())\n"
+            "    # clip zero-count pixels to the display floor - LogNorm would\n"
+            "    # otherwise render them as blank 'bad' pixels\n"
+            '    im = ax.imshow(np.maximum(img, peak * 1e-6), cmap="inferno",\n'
+            "                   norm=LogNorm(vmin=peak * 1e-6, vmax=peak))\n"
+            "    ax.set_title(title)\n"
+            '    ax.axis("off")\n'
+            "    fig.colorbar(im, ax=ax, fraction=0.046)\n"
+            "fig.tight_layout()\n"
+            "plt.show()\n"
+        ),
+        _md(
+            "## The fit: multi-start descent, nothing else\n\n"
+            "The loss is plain least squares on amplitudes (square roots of "
+            "intensities), summed over the two frames — the second evaluated "
+            "with the known move applied. That is the *entire* algorithm.\n\n"
+            "The landscape is not convex, so we run many descents at once: "
+            "batch the coefficient leaf to `(N, 35)`, `vmap` the per-start "
+            "loss, and sum — gradients don't couple across starts and adam is "
+            "elementwise, so one ordinary loop runs 32 independent descents in "
+            "lockstep on-device. A few starts fall into the (now shallow) twin "
+            "basin and simply lose the final argmin."
+        ),
+        _code(
+            "def one_loss(coeffs, model, f1, f2, move):\n"
+            '    m = model.set("coeffs", coeffs)\n'
+            "    return (jnp.mean((jnp.sqrt(m.model()) - jnp.sqrt(f1)) ** 2)\n"
+            "            + jnp.mean((jnp.sqrt(m.model(offset=move)) - jnp.sqrt(f2)) ** 2))\n"
+            "\n"
+            "\n"
+            "@eqx.filter_jit\n"
+            "@eqx.filter_value_and_grad(has_aux=True)\n"
+            "def loss_fn(params, model, f1, f2, move):\n"
+            "    per_start = jax.vmap(one_loss, in_axes=(0, None, None, None, None))(\n"
+            '        params["coeffs"], model, f1, f2, move)\n'
+            "    return per_start.sum(), per_start\n"
+            "\n"
+            "\n"
+            "N_STARTS, ITERS = 32, 500\n"
+            "starts = np.zeros((N_STARTS, 35))\n"
+            "starts[1:] = start_rng.normal(0.0, 0.06, (N_STARTS - 1, 35))\n"
+            "\n"
+            'params = {"coeffs": jnp.asarray(starts)}\n'
+            "optim, state = zdx.map_optimisers(\n"
+            '    params, {"coeffs": optax.adam(optax.cosine_decay_schedule(3e-2, ITERS))})\n'
+            "\n"
+            "history = []\n"
+            "for _ in range(ITERS):\n"
+            "    (_, per_start), grads = loss_fn(params, model, frame_1, frame_2, move)\n"
+            "    updates, state = optim.update(grads, state)\n"
+            "    params = optax.apply_updates(params, updates)\n"
+            "    history.append(np.asarray(per_start))\n"
+            "history = np.array(history)\n"
+            "\n"
+            "best = int(history[-1].argmin())\n"
+            'coeffs_rec = np.asarray(params["coeffs"][best], dtype=float)\n'
+            "\n"
+            "plt.figure(figsize=(7, 4))\n"
+            'plt.semilogy(history, color="0.75", lw=0.7)\n'
+            'plt.semilogy(history[:, best], color="C3", lw=1.8, label="best start")\n'
+            'plt.xlabel("iteration")\n'
+            'plt.ylabel("two-frame loss")\n'
+            "plt.legend()\n"
+            'plt.title(f"{N_STARTS} descents in lockstep")\n'
+            "plt.show()\n"
+        ),
+        _md(
+            "## The recovered wavefront\n\n"
+            "All 35 coefficients land on the diagonal — including the even-m "
+            "modes a single frame is blind to (red). The residuals are a few "
+            "nanometers of OPD, set by the photon noise."
+        ),
+        _code(
+            "t, h = coeffs_true, coeffs_rec\n"
+            "res = h - t\n"
+            "even = twin_sign < 0\n"
+            "\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(11, 4))\n"
+            'axes[0].scatter(t[~even], h[~even], s=24, color="C0",\n'
+            '                label="odd-m modes", alpha=0.85)\n'
+            'axes[0].scatter(t[even], h[even], s=24, color="C3",\n'
+            '                label="even-m modes (twin-blind)", alpha=0.85)\n'
+            "lim = np.abs(t).max() * 1.3\n"
+            'axes[0].plot([-lim, lim], [-lim, lim], "k-", lw=0.6, alpha=0.5)\n'
+            'axes[0].set_xlabel("true (caller units)")\n'
+            'axes[0].set_ylabel("recovered")\n'
+            'axes[0].set_title("35 Zernike coefficients from one frame pair")\n'
+            "axes[0].legend()\n"
+            "\n"
+            "axes[1].bar(np.arange(35), res * 2e3,\n"
+            '            color=["C3" if e else "C0" for e in even])\n'
+            'axes[1].set_xlabel("Noll mode - 2")\n'
+            'axes[1].set_ylabel("residual (nm OPD, mode peak)")\n'
+            "axes[1].set_title(\n"
+            '    f"residual rms: {np.sqrt(np.mean(res ** 2)) * 2e3:.2f} nm OPD per mode")\n'
+            "fig.tight_layout()\n"
+            "plt.show()\n"
+        ),
+        _md(
+            "## Closing the loop, F&F style\n\n"
+            "Because the estimate comes from the full nonlinear model, we can "
+            "correct at **gain 1** — no leaky integrator nursing a "
+            "linearization. And here is Fast & Furious' elegant trick, "
+            "inherited whole: *the correction we just applied is itself the "
+            "known move for the next frame pair*. Each new frame extends the "
+            "loop for free; a short warm refit from the current estimate keeps "
+            "up with 8 starts and 200 iterations."
+        ),
+        _code(
+            "# Apply the correction (gain 1) and take the next frame. The DM\n"
+            "# state changes by (-coeffs_rec - move) relative to frame 2 - that\n"
+            "# difference is exactly known, and becomes the next pair's move.\n"
+            "correction = -coeffs_rec\n"
+            "frame_3 = measure(truth.model(offset=jnp.asarray(correction)), 2)\n"
+            "move_23 = jnp.asarray(correction) - move\n"
+            "\n"
+            "# Fitting the (frame_2, frame_3) pair estimates the wavefront at\n"
+            "# frame 2's DM state (truth + move): warm-start there, and subtract\n"
+            "# the move afterwards to get back the estimate of the truth.\n"
+            "warm = np.repeat((coeffs_rec + np.asarray(move))[None], 8, axis=0)\n"
+            "warm[1:] += start_rng.normal(0.0, 0.02, (7, 35))\n"
+            'params = {"coeffs": jnp.asarray(warm)}\n'
+            "optim, state = zdx.map_optimisers(\n"
+            '    params, {"coeffs": optax.adam(optax.cosine_decay_schedule(1e-2, 200))})\n'
+            "for _ in range(200):\n"
+            "    (_, per_start), grads = loss_fn(\n"
+            "        params, model, frame_2, frame_3, move_23)\n"
+            "    updates, state = optim.update(grads, state)\n"
+            "    params = optax.apply_updates(params, updates)\n"
+            'coeffs_rec2 = np.asarray(params["coeffs"][int(np.asarray(per_start).argmin())])\n'
+            "coeffs_rec2 = coeffs_rec2 - np.asarray(move)\n"
+            "\n"
+            'corrected = sim.sample({"dm": coeffs_true - coeffs_rec2}, meas_strehl=True,\n'
+            "                       meas_pupil_opd=True)\n"
+            "plot_opd_and_psfs(sim, corrected,\n"
+            '                  suptitle="After the loop\'s second correction")\n'
+            "plt.show()\n"
+            'print("strehls:", {k: round(float(v), 4)\n'
+            "                   for k, v in corrected['strehls'].items()})\n"
+        ),
+        _md(
+            "## Act 2: through the vector vortex coronagraph\n\n"
+            "Focal-plane sensing *through a coronagraph* is where the linear "
+            "F&F machinery stops entirely: the vortex's complex focal-plane "
+            "mask breaks the even/odd image algebra it is built on — this is "
+            "the regime the deep-learning analog³ was invented for. For "
+            "gradient descent nothing changes: the coronagraph is just more "
+            "differentiable model, and the recipe below is *identical* to "
+            "act 1's.\n\n"
+            "The twin ambiguity survives the coronagraph in a surprising "
+            "way. A charge +2 vortex maps the parity twin's image onto the "
+            "truth's image *through charge −2* — a charge swap — and an "
+            "unpolarized vector vortex averages the two charges, so the "
+            "average is blind to the swap: behind the VVC the twin is exactly "
+            "as invisible as behind no coronagraph at all. One frame cannot "
+            "choose; the F&F pair still can. (Hold on to that charge-swap "
+            "fact — it pays off at the end.)\n\n"
+            "A coronagraph operates behind an adaptive-optics system, so act "
+            "2's unknown wavefront is a post-AO residual of ~0.9 rad rms. The "
+            "vortex propagation train is heavier than a plain focal plane, so "
+            "this act runs on a 128-pixel pupil grid to keep the notebook "
+            "quick."
+        ),
+        _code(
+            "import copy\n"
+            "\n"
+            "config_vvc = copy.deepcopy(config)\n"
+            'config_vvc["pupil"]["resolution"] = 128\n'
+            'config_vvc["coronagraph"] = {\n'
+            '    "type": "vector_vortex", "charge": 2,\n'
+            '    "lyot": {"type": "external_pupil", "module": "hcipy",\n'
+            '             "function": "make_circular_aperture", "mode": "callable",\n'
+            '             "kwargs": {"diameter": 7.2}, "supersample": 16},\n'
+            "}\n"
+            "sim_vvc = build(SimConfig.model_validate(config_vvc))\n"
+            "\n"
+            "coeffs_vvc_true = rng.normal(0.0, 0.03, 35)  # ~0.9 rad rms post-AO residual\n"
+            "\n"
+            "truth_vvc = FFModel(sim_vvc, coeffs_vvc_true)\n"
+            "twin_vvc = FFModel(sim_vvc, twin_sign * coeffs_vvc_true)\n"
+            "img_t, img_w = np.asarray(truth_vvc.model()), np.asarray(twin_vvc.model())\n"
+            'print(f"twin max image difference through the VVC: "\n'
+            '      f"{np.abs(img_t - img_w).max():.2e} (peak {img_t.max():.2e})")\n'
+            "\n"
+            "fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))\n"
+            "peak = img_t.max()\n"
+            "for ax, img, title in [\n"
+            '    (axes[0], img_t, "VVC frame of the true wavefront"),\n'
+            '    (axes[1], img_w, "VVC frame of the parity twin"),\n'
+            '    (axes[2], np.abs(img_t - img_w) + peak * 1e-16, "|difference|"),\n'
+            "]:\n"
+            '    im = ax.imshow(img, cmap="inferno", norm=LogNorm(vmin=peak * 1e-7, vmax=peak))\n'
+            "    ax.set_title(title, fontsize=10)\n"
+            "    ax.set_axis_off()\n"
+            "    fig.colorbar(im, ax=ax, fraction=0.046)\n"
+            "fig.tight_layout()\n"
+            "plt.show()\n"
+        ),
+        _md(
+            "## The same fit, behind the coronagraph\n\n"
+            "Frame, nudge, frame — through the vortex this time, at the same "
+            "10⁶-photon budget — and the identical multi-start descent. The "
+            "only new line of physics is in the configuration."
+        ),
+        _code(
+            "model_vvc = FFModel(sim_vvc)\n"
+            "move_vvc = jnp.asarray(start_rng.normal(0.0, 0.01, 35))\n"
+            "frame_v1 = measure(truth_vvc.model(), 3)\n"
+            "frame_v2 = measure(truth_vvc.model(offset=move_vvc), 4)\n"
+            "\n"
+            "N_STARTS2, ITERS2 = 16, 350\n"
+            "starts2 = np.zeros((N_STARTS2, 35))\n"
+            "starts2[1:] = start_rng.normal(0.0, 0.03, (N_STARTS2 - 1, 35))\n"
+            "\n"
+            'params = {"coeffs": jnp.asarray(starts2)}\n'
+            "optim, state = zdx.map_optimisers(\n"
+            '    params, {"coeffs": optax.adam(optax.cosine_decay_schedule(3e-2, ITERS2))})\n'
+            "for _ in range(ITERS2):\n"
+            "    (_, per_start), grads = loss_fn(params, model_vvc, frame_v1, frame_v2,\n"
+            "                                    move_vvc)\n"
+            "    updates, state = optim.update(grads, state)\n"
+            "    params = optax.apply_updates(params, updates)\n"
+            'vvc_rec = np.asarray(params["coeffs"][int(np.asarray(per_start).argmin())],\n'
+            "                     dtype=float)\n"
+            "\n"
+            "t2, h2 = coeffs_vvc_true, vvc_rec\n"
+            "res2 = h2 - t2\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(11, 4))\n"
+            'axes[0].scatter(t2[~even], h2[~even], s=24, color="C0",\n'
+            '                label="odd-m modes", alpha=0.85)\n'
+            'axes[0].scatter(t2[even], h2[even], s=24, color="C3",\n'
+            '                label="even-m modes (twin-blind)", alpha=0.85)\n'
+            "lim = np.abs(t2).max() * 1.3\n"
+            'axes[0].plot([-lim, lim], [-lim, lim], "k-", lw=0.6, alpha=0.5)\n'
+            'axes[0].set_xlabel("true (caller units)")\n'
+            'axes[0].set_ylabel("recovered")\n'
+            'axes[0].set_title("35 coefficients through the coronagraph")\n'
+            "axes[0].legend()\n"
+            "axes[1].bar(np.arange(35), res2 * 2e3,\n"
+            '            color=["C3" if e else "C0" for e in even])\n'
+            'axes[1].set_xlabel("Noll mode - 2")\n'
+            'axes[1].set_ylabel("residual (nm OPD, mode peak)")\n'
+            "axes[1].set_title(\n"
+            '    f"residual rms: {np.sqrt(np.mean(res2 ** 2)) * 2e3:.2f} nm OPD per mode")\n'
+            "fig.tight_layout()\n"
+            "plt.show()\n"
+        ),
+        _md(
+            "## Restoring the null\n\n"
+            "Apply the recovered correction and the coronagraph does its job "
+            "again: the leaked starlight collapses back into the null. The "
+            "Strehl, measured through the plain telescope, confirms the "
+            "wavefront itself is fixed."
+        ),
+        _code(
+            "img_before = np.asarray(truth_vvc.model())\n"
+            "img_after = np.asarray(FFModel(sim_vvc, coeffs_vvc_true - vvc_rec).model())\n"
+            "\n"
+            "fig, axes = plt.subplots(1, 2, figsize=(9.6, 4.2))\n"
+            "peak = img_before.max()\n"
+            "for ax, img, title in [\n"
+            '    (axes[0], img_before, "VVC frame before correction"),\n'
+            '    (axes[1], img_after, "after the recovered correction"),\n'
+            "]:\n"
+            '    im = ax.imshow(img, cmap="inferno", norm=LogNorm(vmin=peak * 1e-7, vmax=peak))\n'
+            "    ax.set_title(title)\n"
+            "    ax.set_axis_off()\n"
+            "    fig.colorbar(im, ax=ax, fraction=0.046)\n"
+            "fig.tight_layout()\n"
+            "plt.show()\n"
+            "\n"
+            'corrected_vvc = sim.sample({"dm": coeffs_vvc_true - vvc_rec}, meas_strehl=True)\n'
+            'print("strehls after correction:",\n'
+            "      {k: round(float(v), 4) for k, v in corrected_vvc['strehls'].items()})\n"
+        ),
+        _md(
+            "## The polarization twist: one frame, no nudge\n\n"
+            "Now cash in the charge-swap fact. A *vector* vortex acts on the "
+            "two circular polarizations with opposite charges — the "
+            "unpolarized image averages them, which is what restored the twin "
+            "degeneracy. But image a **single polarization channel** and only "
+            "one charge remains: the twin now produces the *opposite-charge* "
+            "image, which is visibly different. The ambiguity that has driven "
+            "this entire notebook — the reason Fast & Furious needs two "
+            "frames — simply never arises.\n\n"
+            "So through one polarization channel, a **single frame with no "
+            "diversity move at all** determines the full wavefront:"
+        ),
+        _code(
+            "config_pol = copy.deepcopy(config_vvc)\n"
+            'config_pol["coronagraph"]["type"] = "vortex"'
+            "  # one charge = one circular polarization\n"
+            "sim_pol = build(SimConfig.model_validate(config_pol))\n"
+            "\n"
+            "truth_pol = FFModel(sim_pol, coeffs_vvc_true)   # same unknown wavefront\n"
+            "twin_diff = float(np.abs(np.asarray(truth_pol.model())\n"
+            "                         - np.asarray(FFModel(sim_pol, twin_sign"
+            " * coeffs_vvc_true).model())).max())\n"
+            'print(f"twin max image difference in one polarization channel: {twin_diff:.2e} "\n'
+            '      f"- the twin the unpolarized VVC hid is exposed at full amplitude")\n'
+            "\n"
+            "frame_p = measure(truth_pol.model(), 5)  # ONE frame, no nudge\n"
+            "\n"
+            "\n"
+            "def one_loss_single(coeffs, model, f1):\n"
+            '    m = model.set("coeffs", coeffs).model()\n'
+            "    return jnp.mean((jnp.sqrt(m) - jnp.sqrt(f1)) ** 2)\n"
+            "\n"
+            "\n"
+            "@eqx.filter_jit\n"
+            "@eqx.filter_value_and_grad(has_aux=True)\n"
+            "def single_loss_fn(params, model, f1):\n"
+            "    per_start = jax.vmap(one_loss_single, in_axes=(0, None, None))(\n"
+            '        params["coeffs"], model, f1)\n'
+            "    return per_start.sum(), per_start\n"
+            "\n"
+            "\n"
+            "model_pol = FFModel(sim_pol)\n"
+            'params = {"coeffs": jnp.asarray(starts2)}\n'
+            "optim, state = zdx.map_optimisers(\n"
+            '    params, {"coeffs": optax.adam(optax.cosine_decay_schedule(3e-2, 300))})\n'
+            "for _ in range(300):\n"
+            "    (_, per_start), grads = single_loss_fn(params, model_pol, frame_p)\n"
+            "    updates, state = optim.update(grads, state)\n"
+            "    params = optax.apply_updates(params, updates)\n"
+            'pol_rec = np.asarray(params["coeffs"][int(np.asarray(per_start).argmin())],\n'
+            "                     dtype=float)\n"
+            "\n"
+            "res_p = pol_rec - coeffs_vvc_true\n"
+            'corrected_pol = sim.sample({"dm": coeffs_vvc_true - pol_rec}, meas_strehl=True)\n'
+            'print(f"single-frame residual rms: {np.sqrt(np.mean(res_p ** 2)) * 2e3:.2f}'
+            ' nm OPD per mode")\n'
+            'print("strehls after correction:",\n'
+            "      {k: round(float(v), 4) for k, v in corrected_pol['strehls'].items()})\n"
+        ),
+        _md(
+            "## Notes\n\n"
+            "- The classical algorithm's restrictions came from its "
+            "linearization, not from the measurement: with the model "
+            "differentiable end-to-end, the same two frames handle 1.8 rad of "
+            "aberration, any pupil, a vector vortex coronagraph, and photon "
+            "noise — and the recipe contains no step specific to any of "
+            "them. The coronagraph entered this notebook purely as "
+            "configuration.\n"
+            "- These are demonstrations against the instrument model itself "
+            "(with photon shot noise); the validation campaigns behind the "
+            "pinned numbers reproduce every conclusion — the pair's "
+            "necessity behind the VVC, its nanometer-level accuracy, and the "
+            "single-channel result — against independently discretized "
+            "data.\n"
+            "- Swap the corrector or the aperture freely: `forward_fn` probes "
+            "correctors numerically, so a segmented mirror or an "
+            "`actuator_grid` DM exports identically.\n"
+            "- The model is an ordinary pytree — hand the same loss to a "
+            "JAX-native sampler (numpyro, blackjax) for posteriors, or fit "
+            "instrument parameters alongside the wavefront."
         ),
     ],
 }

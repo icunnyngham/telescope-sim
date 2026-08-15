@@ -26,17 +26,23 @@ model for gradient-based phase retrieval, calibration, and ML pipelines.
 
 ## Status
 
-**v2.3.1 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
+**v2.3.2 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex, vector-vortex, and classical Lyot
 coronagraphs, angular and physical focal planes, and multi-mode-fiber dual
-outputs. Every fixture outside the vortex-coronagraph and fiber paths also
-passes on the JAX backend at the same tolerances; the Lyot coronagraph runs
-on both backends, while vortex coronagraphs and the fiber output tap are
-currently HCIPy-only.
+outputs. Every fixture outside the fiber path also passes on the JAX backend
+at the same tolerances — all coronagraph kinds run on both backends; only
+the fiber output tap remains HCIPy-only.
 
 ### What's new since v2.0.0
 
+- **Vortex coronagraphs on JAX** (v2.3.2) — `vortex` and `vector_vortex`
+  now run on both backends: the multi-scale propagation scheme is
+  replayed in the JAX graph from the exact per-level masks HCIPy
+  precomputes, reproducing all four coronagraphic reference fixtures at
+  the golden-digest tolerances (~1e-15 observed backend agreement) and
+  making every coronagraph kind differentiable through `forward_fn` /
+  `sample_batch`.
 - **Classical Lyot coronagraph** (v2.3.1) — a `lyot` coronagraph kind
   (hard-edged focal-plane occulter + optional Lyot-stop sub-config) on
   **both** compute backends: HCIPy via `hcipy.LyotCoronagraph`, JAX via
@@ -114,7 +120,9 @@ out = sim.sample(actuations={"segments": ptt}, meas_strehl=True)
 
 See [docs/tutorials/](docs/tutorials) for runnable notebooks that exercise the
 canonical mini-ELF, vortex and Lyot coronagraph, custom-pupil + Zernike DM,
-and fiber MMF paths.
+and fiber MMF paths — plus differentiable-backend showcases: single-frame
+phase retrieval (08) and gradient-descent Fast & Furious diversity retrieval,
+including through the vector vortex coronagraph (09).
 
 ## JAX compute backend (optional)
 
@@ -164,9 +172,9 @@ targets = fwd.actuation_echo({"segments": ptt})    # training Y outputs
   round-trip.
 - `precision: float32` in the config halves kernel memory for faster
   sampling; `float64` (the default) is the parity-first setting.
-- Components with no JAX path (vortex coronagraphs, `fiber_dual`,
-  atmospheres without `.phase_for`) are rejected at config time with clear
-  errors — the hcipy backend remains the fully general path.
+- Components with no JAX path (`fiber_dual`, atmospheres without
+  `.phase_for`) are rejected at config time with clear errors — the hcipy
+  backend remains the fully general path.
 - Tutorial 07 walks the backend and batched sampling; tutorial 08 exports
   `forward_fn` as a zodiax/dLux-style differentiable model and recovers a
   full segmented-PTT state — pistons several waves deep — from a single

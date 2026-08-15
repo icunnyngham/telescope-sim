@@ -46,6 +46,7 @@ validates the config with pydantic v2 and instantiates a
    tutorials/06_actuator_grid_dm
    tutorials/07_jax_backend_batches
    tutorials/08_phase_retrieval
+   tutorials/09_differentiable_fast_furious
 
 
 .. toctree::

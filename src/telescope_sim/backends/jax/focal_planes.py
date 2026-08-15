@@ -15,11 +15,12 @@ Consequences vs the hcipy backend:
   (``fiber_dual``) are gated off at config time.
 - ``atmos`` must expose ``.phase_for(lam)`` (OPD-defined screens); a plain
   wavefront-callable cannot be applied to a summed-OPD propagation.
-- Coronagraphs: ``identity`` and ``lyot`` are supported. The ``lyot``
-  train is folded into the propagation kernels at build time (the loader
-  hands the bound coronagraph to the focal plane before ``build()``), so
-  the science path applies it in-graph while the reference PSF keeps the
-  plain path. Any other coronagraph kind is rejected at config time via
+- Coronagraphs: ``identity``, ``lyot``, ``vortex``, and
+  ``vector_vortex`` are supported. The coronagraph train is folded into
+  the propagation kernels at build time (the loader hands the bound
+  coronagraph to the focal plane before ``build()``), so the science
+  path applies it in-graph while the reference PSF keeps the plain
+  path. Any other coronagraph kind is rejected at config time via
   ``supported_backends``; this module double-checks at sample time.
 """
 
@@ -66,8 +67,11 @@ def _chain_opd(
     return opd
 
 
+_JAX_CORONAGRAPHS = ("identity", "lyot", "vortex", "vector_vortex")
+
+
 def _check_coronagraph(coronagraph: Any | None) -> None:
-    if coronagraph is not None and getattr(coronagraph, "name", None) not in ("identity", "lyot"):
+    if coronagraph is not None and getattr(coronagraph, "name", None) not in _JAX_CORONAGRAPHS:
         raise NotImplementedError(
             f"coronagraph {getattr(coronagraph, 'name', coronagraph)!r} is "
             "not supported on the 'jax' backend."
@@ -113,7 +117,7 @@ class _JaxPropagationMixin:
             setup.filter_lams,
             focal_length=focal_length,
             dtype=self._precision,
-            lyot=coronagraph if _wants_coronagraph(coronagraph) else None,
+            coronagraph=coronagraph if _wants_coronagraph(coronagraph) else None,
         )
         self._amplitude = aperture.astype(np.float64) * amplitude_scale
 

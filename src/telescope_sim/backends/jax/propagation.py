@@ -65,21 +65,33 @@ class FraunhoferMFT:
         ``"float32"`` for half-memory kernels and faster propagation at
         single-precision accuracy. Kernels are built in the matching
         complex dtype and inputs are cast on the way in.
-    lyot
-        Optional bound ``lyot`` coronagraph (an object exposing
-        ``mask_grid``, ``occulter``, ``lyot_field``, and ``focal_length``
-        — see ``coronagraphs/lyot.py``). When given, a second jitted
-        propagation path applies the classical Lyot train in the pupil
-        plane before the final transform, per wavelength:
+    coronagraph
+        Optional bound coronagraph implementation, dispatched on its
+        ``name``. When given, a second jitted propagation path applies
+        the coronagraph train in the pupil plane before the final
+        transform; ``summed_intensity(..., coronagraph=True)`` selects
+        it and the plain path remains for the reference PSF.
+
+        ``"lyot"`` (see ``coronagraphs/lyot.py``): per wavelength,
 
             E_lyot = L · (E − P⁻[occulter · P⁺[E]])
 
         with P⁺/P⁻ matrix Fourier transforms between the pupil and the
         small mask grid mirroring ``hcipy.FraunhoferPropagator``'s
-        forward/backward conventions (this is Babinet's principle — the
-        same scheme :class:`hcipy.LyotCoronagraph` uses, sharing the
-        exact geometry arrays). ``summed_intensity(..., coronagraph=True)``
-        selects it; the plain path remains for the reference PSF.
+        forward/backward conventions (Babinet's principle — the same
+        scheme :class:`hcipy.LyotCoronagraph` uses, sharing the exact
+        geometry arrays).
+
+        ``"vortex"`` / ``"vector_vortex"`` (see
+        ``coronagraphs/standard.py``): hcipy's multi-scale scheme
+        replayed from the exact per-level masks the bound hcipy object
+        precomputes — level 0 as an FFT filter, finer levels as λ=1 MFT
+        round trips. The vortex phase is scale-invariant, so the train
+        is wavelength-independent (hcipy evaluates it at unit
+        wavelength too) and ONE kernel set serves the whole band. The
+        vector variant runs two half-weight scalar channels at charges
+        ±c (the circular-basis decomposition of the π-retardance
+        plate) and averages intensities.
     """
 
     def __init__(
@@ -90,7 +102,7 @@ class FraunhoferMFT:
         *,
         focal_length: float = 1.0,
         dtype: str = "float64",
-        lyot: Any | None = None,
+        coronagraph: Any | None = None,
     ) -> None:
         if dtype not in ("float64", "float32"):
             raise ValueError(f"dtype must be 'float64' or 'float32', got {dtype!r}")
@@ -141,10 +153,18 @@ class FraunhoferMFT:
         # _summed_intensity (coronagraph bypassed by convention).
         self._science_intensity = _summed_intensity
         self._summed_intensity_coro = None
-        if lyot is not None:
-            self._build_lyot_path(
-                lyot, py=py, px=px, complex_dtype=complex_dtype, real_dtype=real_dtype, w_in=w_in
-            )
+        if coronagraph is not None:
+            kw = dict(py=py, px=px, complex_dtype=complex_dtype, real_dtype=real_dtype, w_in=w_in)
+            coro_name = getattr(coronagraph, "name", None)
+            if coro_name == "lyot":
+                self._build_lyot_path(coronagraph, **kw)
+            elif coro_name in ("vortex", "vector_vortex"):
+                self._build_vortex_path(coronagraph, **kw)
+            else:
+                raise ValueError(
+                    f"coronagraph {coro_name!r} has no jax propagation path "
+                    "(supported: lyot, vortex, vector_vortex)."
+                )
 
     def _build_lyot_path(self, lyot, *, py, px, complex_dtype, real_dtype, w_in):
         """Build the jitted Lyot-train propagation (see class docstring)."""
@@ -219,6 +239,93 @@ class FraunhoferMFT:
 
         self._summed_intensity_coro = _summed_intensity_coro
         self._science_intensity = _summed_intensity_coro
+
+    def _build_vortex_path(self, vortex, *, py, px, complex_dtype, real_dtype, w_in):
+        """Build the jitted multi-scale vortex train (see class docstring)."""
+        stop = None
+        if vortex.lyot_field is not None:
+            stop_arr = np.asarray(vortex.lyot_field)
+            if np.iscomplexobj(stop_arr):
+                raise ValueError(
+                    "complex Lyot-stop fields are not supported on the 'jax' "
+                    "backend; use the hcipy backend for complex stops."
+                )
+            stop = jnp.asarray(stop_arr.reshape(self.pupil_shape), dtype=real_dtype)
+
+        channels = [
+            (
+                float(weight),
+                self._vortex_channel(msc, py=py, px=px, complex_dtype=complex_dtype, w_in=w_in),
+            )
+            for weight, msc in vortex._jax_multi_scale_sources()
+        ]
+
+        @jax.jit
+        def _summed_intensity_coro(amplitude: jnp.ndarray, opd: jnp.ndarray) -> jnp.ndarray:
+            def one_lam(k1_l, k2_l, lam, norm_l):
+                field = amplitude * jnp.exp(1j * (2.0 * jnp.pi / lam) * opd)
+                total = None
+                for weight, train in channels:
+                    e_lyot = train(field)
+                    if stop is not None:
+                        e_lyot = stop * e_lyot
+                    e_focal = k1_l @ (e_lyot * w_in) @ k2_l
+                    contrib = weight * jnp.abs(e_focal) ** 2
+                    total = contrib if total is None else total + contrib
+                return norm_l * total
+
+            per_lam = jax.vmap(one_lam)(self._k1, self._k2, self._lams, self._int_norm)
+            return per_lam.sum(axis=0)
+
+        self._summed_intensity_coro = _summed_intensity_coro
+        self._science_intensity = _summed_intensity_coro
+
+    def _vortex_channel(self, msc, *, py, px, complex_dtype, w_in):
+        """One scalar multi-scale train: pupil field → Lyot-plane field.
+
+        Replays ``hcipy.MultiScaleCoronagraph.forward`` at λ=1 from the
+        bound object's precomputed per-level masks (windowed and
+        correction-subtracted by hcipy itself): level 0 through its FFT
+        filter (zero-pad, fftn, ifftshifted-mask multiply, ifftn,
+        cutout — no Fraunhofer norm, matching ``hcipy.FourierFilter``),
+        finer levels as matrix-Fourier round trips with the λ=1
+        Fraunhofer norms 1/i (forward) and i (backward).
+        """
+        ff = msc.props[0]
+        internal_shape = tuple(int(s) for s in ff.internal_grid.shape)
+        cutout = ff.cutout
+        tf = jnp.asarray(
+            np.fft.ifftshift(np.asarray(msc.focal_masks[0]).reshape(internal_shape)),
+            dtype=complex_dtype,
+        )
+
+        s = 2.0 * np.pi  # 2π/(λf) at λ = f = 1
+        levels = []
+        for i in range(1, len(msc.focal_masks)):
+            grid = msc.props[i]._output_grid
+            fx, fy = _separable_axes(grid)
+            mask2d = np.asarray(msc.focal_masks[i]).reshape((fy.size, fx.size))
+            w_out = float(np.atleast_1d(np.asarray(grid.weights, dtype=np.float64)).flat[0])
+            levels.append(
+                (
+                    jnp.asarray(np.exp(-1j * s * np.outer(fy, py)), dtype=complex_dtype),
+                    jnp.asarray(np.exp(-1j * s * np.outer(px, fx)), dtype=complex_dtype),
+                    jnp.asarray(np.exp(1j * s * np.outer(py, fy)), dtype=complex_dtype),
+                    jnp.asarray(np.exp(1j * s * np.outer(fx, px)), dtype=complex_dtype),
+                    jnp.asarray(mask2d, dtype=complex_dtype),
+                    w_out,
+                )
+            )
+
+        def train(field: jnp.ndarray) -> jnp.ndarray:
+            f = jnp.zeros(internal_shape, dtype=complex_dtype).at[cutout].set(field)
+            lyot = jnp.fft.ifftn(jnp.fft.fftn(f) * tf)[cutout]
+            for kf1, kf2, kb1, kb2, mask, w_out in levels:
+                e_focal = -1j * (kf1 @ (field * w_in) @ kf2)
+                lyot = lyot + 1j * (kb1 @ ((mask * e_focal) * w_out) @ kb2)
+            return lyot
+
+        return train
 
     def summed_intensity(
         self,

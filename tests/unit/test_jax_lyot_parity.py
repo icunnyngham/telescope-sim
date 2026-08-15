@@ -122,12 +122,26 @@ def test_matched_filter_strehl_parity():
     np.testing.assert_allclose(j_s, h_s, rtol=0, atol=ATOL)
 
 
-def test_vortex_still_refused_on_jax():
-    def _vortex(raw):
-        raw["coronagraph"] = {"type": "vortex", "charge": 2}
+def test_hcipy_only_coronagraph_refused_on_jax():
+    """The supported_backends config-time gate still refuses hcipy-only kinds."""
+    from telescope_sim.abc import Coronagraph
+    from telescope_sim.registry import register, registry
+
+    if "hcipy_only_test_coro" not in registry["coronagraph"]:
+
+        @register("coronagraph", "hcipy_only_test_coro")
+        class HcipyOnlyCoro(Coronagraph):
+            name = "hcipy_only_test_coro"
+            supported_backends = frozenset({"hcipy"})
+
+            def apply(self, wf):
+                return wf
+
+    def _swap(raw):
+        raw["coronagraph"] = {"type": "hcipy_only_test_coro"}
 
     with pytest.raises(ValueError, match="not supported on the 'jax' backend"):
-        _pair(mutate=_vortex)
+        _pair(mutate=_swap)
 
 
 def test_complex_lyot_stop_refused_by_kernel_builder(lyot_pair):
@@ -136,6 +150,7 @@ def test_complex_lyot_stop_refused_by_kernel_builder(lyot_pair):
     coro = j._c.coronagraph
 
     class ComplexStop:
+        name = "lyot"
         mask_grid = coro.mask_grid
         occulter = coro.occulter
         lyot_field = np.asarray(coro.lyot_field) * (1.0 + 0.1j)
@@ -146,5 +161,5 @@ def test_complex_lyot_stop_refused_by_kernel_builder(lyot_pair):
             j._c.pupil_grid,
             fp.lam_setup.focal_grid,
             fp.lam_setup.filter_lams,
-            lyot=ComplexStop(),
+            coronagraph=ComplexStop(),
         )

@@ -242,12 +242,14 @@ def test_fiber_dual_tap_rejected_on_jax():
 
 
 @pytest.mark.parametrize("coro_type", ["vortex", "vector_vortex"])
-def test_vortex_coronagraphs_rejected_on_jax(coro_type):
+def test_vortex_coronagraphs_build_on_jax(coro_type):
+    """Vortex kinds are dual-backend: the config builds and samples on jax."""
     cfg = _base_config()
     cfg["coronagraph"] = {"type": coro_type, "charge": 2}
-    config = SimConfig.model_validate(cfg)
-    with pytest.raises(ValueError, match=rf"coronagraph/{coro_type} is not supported on the 'jax'"):
-        build(config, backend="jax")
+    sim = build(SimConfig.model_validate(cfg), backend="jax")
+    img = sim.sample()["images"]["psf"]
+    assert img.shape == (16, 16, 1)
+    assert np.all(np.isfinite(img))
 
 
 def test_identity_coronagraph_allowed_on_jax():
@@ -263,7 +265,7 @@ def test_check_coronagraph_is_re_asserted_at_sample_time():
     _check_coronagraph(None)
     _check_coronagraph(type("Fake", (), {"name": "identity"})())
     with pytest.raises(NotImplementedError, match="not supported on the 'jax' backend"):
-        _check_coronagraph(type("Fake", (), {"name": "vortex"})())
+        _check_coronagraph(type("Fake", (), {"name": "perfect"})())
 
 
 # A corrector with no ``_dm`` / ``_sm``: the pipeline's ``_mirror_of`` returns

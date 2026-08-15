@@ -1,0 +1,62 @@
+# Test config for the vortex coronagraphs (both backends).
+#
+# Clean circular aperture, a small Zernike DM, and a `vortex` charge-2
+# coronagraph with an undersized circular Lyot stop. The vector_vortex
+# parity tests mutate `coronagraph.type` / `charge` in-memory. Focal
+# planes are deliberately tight (tests widen them via
+# _widen_focal_planes before image assertions).
+
+pupil:
+  resolution: 64
+  extent: 1.05
+
+aperture:
+  type: external_pupil
+  module: hcipy
+  function: make_circular_aperture
+  mode: callable
+  kwargs:
+    diameter: 1.0
+  area: 0.7853981633974483  # pi * (0.5)^2
+
+correctors:
+  zdm:
+    type: zernike
+    n_modes: 6
+    zernike_diameter: 1.0
+    starting_mode: 2
+    actuate_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [zdm]
+
+coronagraph:
+  type: vortex
+  charge: 2
+  lyot:
+    type: external_pupil
+    module: hcipy
+    function: make_circular_aperture
+    mode: callable
+    kwargs:
+      diameter: 0.85
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 1.0e-5
+    focal_res: 64
+    fractional_bandwidth: 0.1
+    num_samples: 3
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing: []
+
+strehl_core_rad: null

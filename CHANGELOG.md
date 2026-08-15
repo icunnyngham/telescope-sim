@@ -6,6 +6,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `vortex` and `vector_vortex` coronagraphs now run on the jax backend,
+  completing dual-backend coverage of every coronagraph kind. The jax
+  path replays hcipy's multi-scale propagation scheme from the exact
+  per-level masks the bound hcipy coronagraph precomputes (level 0 as an
+  FFT filter, finer levels as unit-wavelength matrix-Fourier round
+  trips — the vortex phase is scale-invariant, so one kernel set serves
+  the whole band). The vector variant propagates the circular-basis
+  decomposition of the π-retardance plate: two half-weight scalar
+  channels at charges ±c. All four coronagraphic reference fixtures
+  (scalar vortex and VVC lineages) reproduce their golden digests on
+  the jax backend; observed cross-backend agreement is ~1e-15 on
+  peak-normalized images, and the trains are in-graph for
+  `forward_fn` / `sample_batch` — batched and differentiable.
+- Tutorial 09, "Differentiable Fast & Furious": phase-diversity
+  wavefront retrieval with the raw Fast & Furious inputs (frame, known
+  small DM nudge, frame) driven by gradient descent through the
+  differentiable backend instead of the classical weak-phase machinery —
+  recovering a 1.8 rad rms wavefront to nanometer residuals through
+  photon noise, then repeating the identical recipe through the vector
+  vortex coronagraph, including the single-frame polarization-channel
+  variant the ±charge structure enables.
+
+### Changed
+
+- Tutorial 08 measures against a photon-noise-limited frame (10⁷-photon
+  shot noise) over a wider field of view, moving the demonstrated
+  residuals to the physically meaningful photon-limited level.
+- Noisy-image displays in tutorials 01/07/08 clip zero/negative counts
+  to the LogNorm floor so they render at the floor color instead of as
+  blank pixels.
+
 ## [2.3.1] - 2026-08-13
 
 The first dual-backend capability release: a classical Lyot coronagraph

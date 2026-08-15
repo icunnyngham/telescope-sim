@@ -50,7 +50,8 @@ def _jax_block_reason(fixture_id: str) -> str | None:
     config = yaml.safe_load(config_path.read_text())
 
     coronagraph = config.get("coronagraph")
-    if coronagraph is not None and coronagraph.get("type") not in ("identity", "lyot"):
+    jax_coronagraphs = ("identity", "lyot", "vortex", "vector_vortex")
+    if coronagraph is not None and coronagraph.get("type") not in jax_coronagraphs:
         return f"coronagraph {coronagraph.get('type')!r} has no jax implementation"
 
     for out_name, out_cfg in (config.get("outputs") or {}).items():

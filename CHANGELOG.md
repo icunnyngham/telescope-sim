@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-08-14
+
+Full coronagraph coverage on the JAX backend: the vortex and
+vector-vortex kinds join `lyot`, reproducing every coronagraphic golden
+fixture at ~1e-15 backend agreement and differentiable end-to-end —
+demonstrated by the new "Differentiable Fast & Furious" tutorial, which
+drives wavefront retrieval through the vector vortex by gradient
+descent.
+
 ### Added
 
 - `vortex` and `vector_vortex` coronagraphs now run on the jax backend,
@@ -1128,7 +1137,8 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.1.1...v2.2.0

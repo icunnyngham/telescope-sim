@@ -48,8 +48,9 @@ Bundled presets
 
 The package ships with a small set of presets:
 
-- ``elf_15seg`` — 15-segment mini-ELF on a 1.25 m ring with two filters
-  (500 nm and 1 µm), broadband sampling at 5 wavelengths per filter.
+- ``elf_15seg`` — the sELF (small-ELF) array: 15 segments of 0.5 m on a
+  1.5 m ring (3.5 m outer diameter), J-band filter (1.25 µm, 5%
+  bandwidth) with broadband sampling at 5 wavelengths.
 
 Listing available presets::
 

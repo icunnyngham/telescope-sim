@@ -40,16 +40,19 @@ def _code(text: str) -> tuple[str, str]:
 TUTORIALS: dict[str, list[tuple[str, str]]] = {
     "01_canonical_mini_elf": [
         _md(
-            "# 1. Canonical mini-ELF\n\n"
-            "The simplest pipeline: a 15-segment ring of circular sub-apertures, "
-            "no atmosphere, no coronagraph. Loaded from the bundled `elf_15seg` preset."
+            "# 1. The sELF array\n\n"
+            "The simplest pipeline: the sELF (small-ELF) design — 15 circular "
+            "0.5 m sub-apertures on a 1.5 m ring (3.5 m outer diameter), no "
+            "atmosphere, no coronagraph. Loaded from the bundled `elf_15seg` "
+            "preset."
         ),
         _md(
             "The `elf_15seg` preset is a small YAML config bundled with the package. "
-            "It declares the pupil grid, aperture, one PTT corrector, **two filters** "
-            "(500 nm and 1 µm) sharing the same focal-plane sampling, and a single "
-            "intensity output. Let's read it directly so the shape of a real config "
-            "is visible."
+            "It declares the pupil grid, aperture, one PTT corrector, the **sELF "
+            "focal-plane wavefront-sensing band** (0.90–1.05 µm — 15.4% fractional "
+            "bandwidth at 0.975 µm — sampled at 11 wavelengths), and a single "
+            "intensity output. Let's read it directly so the shape of a real "
+            "config is visible."
         ),
         _code(
             "from importlib.resources import files\n"
@@ -80,9 +83,11 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         ),
         _md(
             "Sample at rest (no actuators applied). The pupil OPD is ~0 inside "
-            "the aperture. Both filters share that same wavefront, but their "
-            "PSFs differ in scale — the 1 µm Airy disk is twice the angular size "
-            "of the 500 nm one because λ/D scales linearly with λ."
+            "the aperture, and the PSF shows the segmented ring's signature: a "
+            "broad envelope set by the 0.5 m segment size, modulated by the "
+            "sharp interference structure of the 15-element ring — the array "
+            "resolves like a 3.5 m telescope while collecting like fifteen "
+            "0.5 m ones."
         ),
         _code(
             "out = sim.sample(meas_strehl=True, meas_pupil_opd=True)\n"
@@ -94,10 +99,10 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         ),
         _md(
             "Apply random per-segment piston/tip/tilt errors and resample. The "
-            "OPD panel now shows the per-segment phase errors directly, and both "
-            "filters' PSFs degrade — but each degrades differently because Strehl "
-            "scales as `exp(-(2π σ_OPD / λ)²)`: the same OPD error costs more "
-            "Strehl at shorter wavelengths."
+            "OPD panel now shows the per-segment phase errors directly, and the "
+            "PSF degrades accordingly — Strehl falls as "
+            "`exp(-(2π σ_OPD / λ)²)`, so the same OPD error would cost even "
+            "more at wavelengths shorter than this band."
         ),
         _code(
             "rng = np.random.default_rng(0)\n"
@@ -115,9 +120,9 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "The `noisy_detector` post-processor wraps HCIPy's `NoisyDetector` "
             "(read noise + dark current + flat-field + optional photon shot noise). "
             "It's a single-focal-plane processor — its underlying detector needs "
-            "exactly one focal grid — so the simplest demo derives a single-filter "
-            "config from the preset and stacks `noisy_detector` under the existing "
-            "`intensity` tap.\n\n"
+            "exactly one focal grid, which the preset's single band satisfies. "
+            "The demo restates the preset's sELF aperture + PTT corrector inline "
+            "and stacks `noisy_detector` under the existing `intensity` tap.\n\n"
             "Per-sample photon flux is plumbed through "
             '`sim.sample(output_overrides={"psf": {"int_phot_flux": ...}})`: '
             "the same noisy sim covers a wide flux range without rebuilding."
@@ -126,15 +131,14 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "from telescope_sim.config.schema import SimConfig\n"
             "from telescope_sim.config.loader import build\n"
             "\n"
-            "# Derived single-filter config so the single-focal-plane noisy_detector\n"
-            "# constraint is satisfied. Re-uses the 15-segment ELF aperture + PTT\n"
-            "# corrector from the preset.\n"
+            "# The sELF preset setup restated inline, with noisy_detector stacked\n"
+            "# under the intensity tap.\n"
             "noisy_cfg = {\n"
-            "    'pupil': {'resolution': 256, 'extent': 3.1563881637},\n"
+            "    'pupil': {'resolution': 256, 'extent': 3.675},\n"
             "    'aperture': {\n"
             "        'type': 'segmented_circular',\n"
-            "        'segment_diameter': 0.5197792270,\n"
-            "        'layout': 'elf', 'n_segments': 15, 'ring_radius': 1.25,\n"
+            "        'segment_diameter': 0.5,\n"
+            "        'layout': 'elf', 'n_segments': 15, 'ring_radius': 1.5,\n"
             "        'supersample': 16,\n"
             "    },\n"
             "    'correctors': {\n"
@@ -148,9 +152,9 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "    'corrector_chain': ['segments'],\n"
             "    'focal_planes': {\n"
             "        'filter1': {\n"
-            "            'type': 'angular', 'central_lam': 0.5e-6,\n"
-            "            'focal_extent': 1.0, 'focal_res': 128,\n"
-            "            'fractional_bandwidth': 0.05, 'num_samples': 5,\n"
+            "            'type': 'angular', 'central_lam': 0.975e-6,\n"
+            "            'focal_extent': 3.2, 'focal_res': 640,\n"
+            "            'fractional_bandwidth': 0.1538, 'num_samples': 11,\n"
             "        },\n"
             "    },\n"
             "    'outputs': {\n"
@@ -212,11 +216,11 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         _code(
             "# Build a synthetic extended scene (three off-axis point sources +\n"
             "# a smooth background) at the same resolution as the focal grid.\n"
-            "scene = np.zeros((128, 128), dtype=np.float64)\n"
+            "scene = np.zeros((640, 640), dtype=np.float64)\n"
             "ys, xs = np.indices(scene.shape)\n"
-            "for cy, cx, amp, sig in [(45, 55, 3.0, 1.0),\n"
-            "                          (70, 70, 1.5, 1.0),\n"
-            "                          (60, 90, 0.8, 1.0)]:\n"
+            "for cy, cx, amp, sig in [(225, 275, 3.0, 5.0),\n"
+            "                          (350, 350, 1.5, 5.0),\n"
+            "                          (300, 450, 0.8, 5.0)]:\n"
             "    scene += amp * np.exp(-((ys - cy) ** 2 + (xs - cx) ** 2) / (2 * sig ** 2))\n"
             "scene += 0.05  # uniform background\n"
             "\n"
@@ -1288,14 +1292,14 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "from telescope_sim.config.loader import build\n"
             "\n"
             "# Single-filter noisy config (noisy_detector needs exactly one\n"
-            "# focal grid); same 15-segment ELF aperture + PTT corrector.\n"
+            "# focal grid); same sELF aperture + PTT corrector as the preset.\n"
             "noisy_cfg = {\n"
             "    'backend': 'jax',\n"
-            "    'pupil': {'resolution': 256, 'extent': 3.1563881637},\n"
+            "    'pupil': {'resolution': 256, 'extent': 3.675},\n"
             "    'aperture': {\n"
             "        'type': 'segmented_circular',\n"
-            "        'segment_diameter': 0.5197792270,\n"
-            "        'layout': 'elf', 'n_segments': 15, 'ring_radius': 1.25,\n"
+            "        'segment_diameter': 0.5,\n"
+            "        'layout': 'elf', 'n_segments': 15, 'ring_radius': 1.5,\n"
             "        'supersample': 16,\n"
             "    },\n"
             "    'correctors': {\n"
@@ -1309,9 +1313,9 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "    'corrector_chain': ['segments'],\n"
             "    'focal_planes': {\n"
             "        'filter1': {\n"
-            "            'type': 'angular', 'central_lam': 0.5e-6,\n"
-            "            'focal_extent': 1.0, 'focal_res': 128,\n"
-            "            'fractional_bandwidth': 0.05, 'num_samples': 5,\n"
+            "            'type': 'angular', 'central_lam': 0.975e-6,\n"
+            "            'focal_extent': 3.2, 'focal_res': 640,\n"
+            "            'fractional_bandwidth': 0.1538, 'num_samples': 11,\n"
             "        },\n"
             "    },\n"
             "    'outputs': {\n"
@@ -1504,9 +1508,10 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "gradient descent to solve a classically hard problem: "
             "recovering the full piston/tip/tilt state of a segmented "
             "telescope from a **single focal-plane image**.\n\n"
-            "The instrument is the 15-segment ELF ring from tutorial 1, "
-            "observed through **one** broadband band: 1 µm central "
-            "wavelength, 10% fractional bandwidth, 13 wavelength samples. "
+            "The instrument is the sELF 15-segment array from tutorial 1, "
+            "observed through its focal-plane wavefront-sensing band: "
+            "0.90–1.05 µm (15.4% fractional bandwidth at 0.975 µm), "
+            "sampled at 11 wavelengths. "
             "Focal-plane phasing of this telescope with a deep CNN was "
             "demonstrated in the small-ELF project¹; two properties of the "
             "instrument make the single-frame problem well-posed, for a "
@@ -1518,10 +1523,10 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "- **Spectral bandwidth in one frame** — a monochromatic image "
             "cannot tell a segment piston from the same piston plus a whole "
             "wave, but across a band the wave count differs per wavelength, "
-            "so one broadband image resolves the 2π wrap. A 10% band keeps "
-            "pistons unambiguous out to roughly ±5 waves (λ²/Δλ); here we "
-            "recover pistons as deep as **±4 waves of OPD** — eight times "
-            "the monochromatic ±λ/2 capture range.\n\n"
+            "so one broadband image resolves the 2π wrap. The 15.4% band "
+            "keeps pistons unambiguous out to roughly ±3 waves (λ²/Δλ); "
+            "here we recover pistons as deep as **±2.9 waves of OPD** — "
+            "nearly six times the monochromatic ±λ/2 capture range.\n\n"
             'Install the pieces with `pip install "telescope-sim[jax]" '
             "zodiax optax` (zodiax brings equinox; Python ≥ 3.11).\n\n"
             "---\n"
@@ -1537,15 +1542,15 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "from telescope_sim.config.schema import SimConfig\n"
             "from telescope_sim.helpers.diagnostics import plot_opd_and_psfs\n"
             "\n"
-            "# The elf_15seg geometry with a single broadband band: 1 um\n"
-            "# central wavelength, 10% fractional bandwidth, 13 samples.\n"
+            "# The sELF array observed in its FPWFS band: 0.90-1.05 um\n"
+            "# (15.4% at 0.975 um), 11 wavelength samples, 5 mas sampling.\n"
             "config = {\n"
             '    "backend": "jax",\n'
-            '    "pupil": {"resolution": 256, "extent": 3.1563881637},\n'
+            '    "pupil": {"resolution": 256, "extent": 3.675},\n'
             '    "aperture": {\n'
             '        "type": "segmented_circular", "layout": "elf",\n'
-            '        "n_segments": 15, "ring_radius": 1.25,\n'
-            '        "segment_diameter": 0.5197792270, "supersample": 16,\n'
+            '        "n_segments": 15, "ring_radius": 1.5,\n'
+            '        "segment_diameter": 0.5, "supersample": 16,\n'
             "    },\n"
             '    "correctors": {\n'
             '        "segments": {\n'
@@ -1557,24 +1562,24 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "    },\n"
             '    "corrector_chain": ["segments"],\n'
             '    "focal_planes": {\n'
-            '        "band_1um": {\n'
-            '            "type": "angular", "central_lam": 1.0e-6,\n'
-            '            "focal_extent": 2.0, "focal_res": 160,\n'
-            '            "fractional_bandwidth": 0.10, "num_samples": 13,\n'
+            '        "fpwfs_band": {\n'
+            '            "type": "angular", "central_lam": 0.975e-6,\n'
+            '            "focal_extent": 3.2, "focal_res": 640,\n'
+            '            "fractional_bandwidth": 0.1538, "num_samples": 11,\n'
             "        }\n"
             "    },\n"
             '    "outputs": {\n'
-            '        "psf": {"tap": {"type": "intensity", "focal_planes": ["band_1um"]},\n'
+            '        "psf": {"tap": {"type": "intensity", "focal_planes": ["fpwfs_band"]},\n'
             '                "post_processing": [{"type": "max_intensity_norm"}]}\n'
             "    },\n"
             "}\n"
             "sim = build(SimConfig.model_validate(config))\n"
             "\n"
             "# The unknown state to recover: random piston/tip/tilt on all 15\n"
-            "# segments. Pistons span ±2 um of surface = ±4 um of OPD —\n"
-            "# up to ±4 whole waves at 1 um, far beyond any monochromatic\n"
-            "# capture range.\n"
-            "PISTON_RANGE = 2.0\n"
+            "# segments. Pistons span ±1.4 um of surface = ±2.8 um of OPD —\n"
+            "# ±2.9 waves at 0.975 um, close to the band's ±3.2-wave\n"
+            "# ambiguity limit and far beyond any monochromatic capture range.\n"
+            "PISTON_RANGE = 1.4\n"
             "rng = np.random.default_rng(0)\n"
             "ptt_true = np.zeros((15, 3))\n"
             "ptt_true[:, 0] = rng.uniform(-PISTON_RANGE, PISTON_RANGE, 15)\n"
@@ -1638,7 +1643,7 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "data = measure(PTTModel(sim, ptt_true).model())\n"
             "\n"
             "fig, ax = plt.subplots(figsize=(5.2, 4.2))\n"
-            'img = np.asarray(data["band_1um"])\n'
+            'img = np.asarray(data["fpwfs_band"])\n'
             "peak = float(img.max())\n"
             'im = ax.imshow(np.maximum(img, peak * 1e-6), cmap="inferno",\n'
             "               norm=LogNorm(vmin=peak * 1e-6, vmax=peak))\n"
@@ -1683,7 +1688,7 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "    return per_start.sum(), per_start\n"
             "\n"
             "\n"
-            "N_STARTS, ITERS = 16, 500\n"
+            "N_STARTS, ITERS = 16, 250\n"
             "start_rng = np.random.default_rng(99)\n"
             "starts = np.zeros((N_STARTS, 15, 3))\n"
             "starts[1:, :, 0] = start_rng.uniform(-PISTON_RANGE, PISTON_RANGE,\n"
@@ -1715,16 +1720,17 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         _code(
             "batched_loss = eqx.filter_jit(jax.vmap(one_loss, in_axes=(0, None, None)))\n"
             "\n"
-            "# Piston comb offsets, in caller units (um of surface): 0.5 um of\n"
-            "# surface is one wave of OPD at 1 um. Offsets up to four waves let\n"
-            "# greedy hops compose their way out of the deepest wraps.\n"
-            "DELTAS = [s * c for c in (0.5, 1.0, 1.5, 2.0) for s in (1.0, -1.0)]\n"
+            "# Piston comb offsets, in caller units (um of surface): 0.4875 um\n"
+            "# of surface is one wave of OPD at 0.975 um. Offsets up to four\n"
+            "# waves let greedy hops compose their way out of the deepest wraps.\n"
+            "WAVE = 0.975 / 2  # um of surface per wave of OPD\n"
+            "DELTAS = [s * c * WAVE for c in (1, 2, 3, 4) for s in (1.0, -1.0)]\n"
             "\n"
             "\n"
             "def wrap_resolve(ptt, base):\n"
             '    """Greedy per-segment piston comb hops, one batched eval per step."""\n'
             "    hops = 0\n"
-            "    for _ in range(60):\n"
+            "    for _ in range(30):\n"
             "        cands = np.repeat(ptt[None], 15 * len(DELTAS), axis=0)\n"
             "        for i in range(15):\n"
             "            for j, d in enumerate(DELTAS):\n"
@@ -1778,7 +1784,7 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             'axes[0].plot([-lim, lim], [-lim, lim], "k-", lw=0.6, alpha=0.5)\n'
             'axes[0].set_xlabel("true (caller units)")\n'
             'axes[0].set_ylabel("recovered")\n'
-            'axes[0].set_title("45 parameters from one frame — pistons up to ±4 waves")\n'
+            'axes[0].set_title("45 parameters from one frame — pistons up to ±2.9 waves")\n'
             "axes[0].legend()\n"
             "\n"
             "x = np.arange(15)\n"

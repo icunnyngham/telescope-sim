@@ -65,9 +65,9 @@ def test_from_preset_unknown_lists_available() -> None:
 
 
 def test_from_preset_elf_15seg_builds() -> None:
-    """The bundled mini-ELF preset constructs a usable pipeline."""
+    """The bundled sELF preset constructs a usable pipeline."""
     from telescope_sim import TelescopeSim
 
     sim = TelescopeSim.from_preset("elf_15seg")
     assert "segments" in sim.correctors
-    assert set(sim.focal_planes) == {"filter1", "filter2"}
+    assert set(sim.focal_planes) == {"filter1"}

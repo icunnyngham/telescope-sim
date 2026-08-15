@@ -294,7 +294,7 @@ def test_sample_batch_equals_sample_loop_on_jax(elf_pair, ptt_batch):
     batch = jax_sim.sample_batch({"segments": ptt_batch}, meas_strehl=True)
     singles = [jax_sim.sample({"segments": a}, meas_strehl=True) for a in ptt_batch]
 
-    assert batch["images"]["psf"].shape == (3, 128, 128, 2)
+    assert batch["images"]["psf"].shape == (3, 640, 640, 1)
     for b, single in enumerate(singles):
         assert_image_parity(batch["images"]["psf"][b], single["images"]["psf"])
         np.testing.assert_array_equal(

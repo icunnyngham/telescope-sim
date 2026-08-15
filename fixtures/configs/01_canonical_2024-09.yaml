@@ -1,6 +1,8 @@
 # Reproduces the legacy fixture 01_canonical_2024-09 in the v2 pipeline.
-# Same setup as the elf_15seg preset (the preset is in fact derived from
-# this fixture's capture).
+# Historical mini-ELF layout (1.25 m ring, touching segments, 500 nm +
+# 1 um filters), pinned against the captured digest. The elf_15seg
+# preset originally derived from this capture; the preset has since
+# moved to the current sELF design and no longer matches this fixture.
 
 pupil:
   resolution: 256

@@ -102,7 +102,7 @@ install with dev/doc extras.
 from telescope_sim import TelescopeSim
 import numpy as np
 
-# Bundled preset (mini-ELF, 15 segments, 2 filters)
+# Bundled preset (the sELF array: 15 segments, J band)
 sim = TelescopeSim.from_preset("elf_15seg")
 
 # Or a custom YAML
@@ -119,7 +119,7 @@ out = sim.sample(actuations={"segments": ptt}, meas_strehl=True)
 ```
 
 See [docs/tutorials/](docs/tutorials) for runnable notebooks that exercise the
-canonical mini-ELF, vortex and Lyot coronagraph, custom-pupil + Zernike DM,
+sELF segmented array, vortex and Lyot coronagraph, custom-pupil + Zernike DM,
 and fiber MMF paths — plus differentiable-backend showcases: single-frame
 phase retrieval (08) and gradient-descent Fast & Furious diversity retrieval,
 including through the vector vortex coronagraph (09).

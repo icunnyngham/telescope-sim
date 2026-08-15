@@ -185,7 +185,7 @@ class SegmentedPTTCorrector(Corrector):
         Segment masks are made disjoint via argmax across segments —
         each transmitting pixel is assigned to the single segment whose
         anti-aliased mask value is largest there. Touching segments
-        (e.g. the elf_15seg ring where center-to-center spacing equals
+        (e.g. ring layouts whose center-to-center spacing equals the
         segment diameter) otherwise share boundary pixels through
         anti-aliasing, polluting per-segment fits.
         """

@@ -8,6 +8,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The `elf_15seg` preset and the tutorials built on it (01, 07, 08) now
+  carry the current sELF (small-ELF) optical design: 15 circular 0.5 m
+  sub-apertures on a 1.5 m ring (3.5 m outer diameter), observed in the
+  sELF focal-plane wavefront-sensing band — 0.90–1.05 µm (15.4%
+  fractional bandwidth at 0.975 µm), 11 wavelength samples, 3.2 arcsec
+  field at 5 mas sampling — replacing the historical mini-ELF layout
+  (1.25 m ring, touching segments, 500 nm + 1 µm filter pair). Tutorial
+  08's single-frame piston retrieval is re-pinned on the new band:
+  pistons to ±2.9 waves of OPD against the band's ±3.2-wave ambiguity
+  limit. Preset name and `filter1` key are unchanged; the legacy-parity
+  fixture configs are untouched.
 - Tutorial 09 ("Differentiable Fast & Furious") now runs on the real
   Subaru/SCExAO VAMPIRES F750 instrument mode used by the coronagraph
   tutorials — the parametric SCExAO pupil with its offset spiders and

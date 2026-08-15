@@ -1,17 +1,24 @@
-# elf_15seg preset — mini-ELF with 15 circular sub-apertures on a 1.25 m ring,
-# two filters (500 nm + 1000 nm), broadband sampling at 5 wavelengths per
-# filter. Matches the layout used by the canonical-family fixtures.
+# elf_15seg preset — the sELF (small-ELF) array: 15 circular 0.5 m
+# sub-apertures on a 1.5 m ring (3.5 m outer diameter), observed in the
+# sELF focal-plane wavefront-sensing band: 0.90-1.05 um (15.4%
+# fractional bandwidth at 0.975 um) sampled at 11 wavelengths.
+#
+# Geometry and band follow the current sELF optical design. The
+# full-fidelity sELF model runs a 512-point pupil grid and adds a
+# 34-across fit-role `actuator_grid` AO DM ahead of the segments (see
+# tutorial 6 for that pattern); the preset keeps a 256 pupil and the
+# segment corrector only, so tutorials and tests stay fast.
 
 pupil:
   resolution: 256
-  extent: 3.1563881637  # (2*telescopeR + chord_mir_diameter) * 1.05
+  extent: 3.675            # 3.5 m outer diameter * 1.05
 
 aperture:
   type: segmented_circular
-  segment_diameter: 0.5197792270  # 2 * 1.25 * sin(pi/15)
+  segment_diameter: 0.5
   layout: elf
   n_segments: 15
-  ring_radius: 1.25
+  ring_radius: 1.5         # (3.5 - 0.5) / 2
   supersample: 16
 
 correctors:
@@ -28,24 +35,17 @@ corrector_chain: [segments]
 focal_planes:
   filter1:
     type: angular
-    central_lam: 0.5e-6
-    focal_extent: 1.0
-    focal_res: 128
-    fractional_bandwidth: 0.05
-    num_samples: 5
-  filter2:
-    type: angular
-    central_lam: 1.0e-6
-    focal_extent: 1.0
-    focal_res: 128
-    fractional_bandwidth: 0.05
-    num_samples: 5
+    central_lam: 0.975e-6        # 0.5 * (0.90 + 1.05) um
+    focal_extent: 3.2            # arcsec
+    focal_res: 640               # -> 5.0 mas/sample
+    fractional_bandwidth: 0.1538 # (1.05 - 0.90)/0.975 = 15.4%
+    num_samples: 11              # FPWFS discipline
 
 outputs:
   psf:
     tap:
       type: intensity
-      focal_planes: [filter1, filter2]
+      focal_planes: [filter1]
     post_processing:
       - type: max_intensity_norm
 

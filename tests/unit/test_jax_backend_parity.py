@@ -10,8 +10,9 @@ round-off — the tolerance is slack, not a fitted bound).
 
 Coverage map:
 
-- ``elf_15seg`` preset: segmented PTT, two filters, 5 wavelengths each
-  (broadband, ``num_samples > 1``) — images, reference PSFs, actuation echo.
+- ``elf_15seg`` preset (sELF array): segmented PTT, one J-band filter at
+  5 wavelengths (broadband, ``num_samples > 1``) — images, reference PSFs,
+  actuation echo.
 - ``actuator_grid`` YAML: monochromatic (``num_samples == 1``) DM with a
   rotation misalignment — images + caller-facing echo.
 - ``actuator_grid`` fit-role YAML + ``three_zernike_residual_fit`` YAML:
@@ -168,12 +169,12 @@ def test_elf_at_rest_images_match(elf_pair):
     hcipy_sim, jax_sim = elf_pair
     h = hcipy_sim.sample()["images"]["psf"]
     d = jax_sim.sample()["images"]["psf"]
-    assert h.shape == (128, 128, 2)  # two filters stacked on the last axis
+    assert h.shape == (640, 640, 1)  # filters stacked on the last axis
     assert_image_parity(d, h)
 
 
 def test_elf_broadband_images_match_under_random_ptt(elf_pair, ptt_actuations):
-    """The headline case: 15 segments × piston/tip/tilt, 2 filters, 5 λ each."""
+    """The headline case: 15 segments × piston/tip/tilt, J band, 5 λ."""
     hcipy_sim, jax_sim = elf_pair
     h_out = hcipy_sim.sample({"segments": ptt_actuations})
     d_out = jax_sim.sample({"segments": ptt_actuations})
@@ -209,7 +210,7 @@ def test_jax_focal_plane_result_carries_no_wavefronts(elf_pair):
     hcipy_sim, jax_sim = elf_pair
     h_fp = next(iter(hcipy_sim.focal_planes.values()))
     d_fp = next(iter(jax_sim.focal_planes.values()))
-    assert len(h_fp._propagate_chain(hcipy_sim._c.correctors).wavefronts) == 5
+    assert len(h_fp._propagate_chain(hcipy_sim._c.correctors).wavefronts) == 11
     assert d_fp._propagate_chain(jax_sim._c.correctors).wavefronts == []
 
 

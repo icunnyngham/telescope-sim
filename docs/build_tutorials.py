@@ -1836,15 +1836,21 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "Two ways past those limits have been shown: extending the "
             "algebra to specific symmetric coronagraphs, or replacing the "
             "estimator outright with a deep neural network trained on the "
-            "instrument model — the sequential-diversity analog³ validated "
-            "on the SCExAO optical bench with exactly these inputs. This "
-            "tutorial takes a third path: **gradient descent through the "
-            "telescope model itself**. The raw F&F inputs — frame, known "
-            "nudge, frame — go into a generic least-squares loss, and "
-            "`jit(vmap(grad))` does the rest. No linearization means no ~1 rad "
-            "ceiling: we recover a wavefront of **1.8 rad rms** (Strehl ≈ 4%) "
-            "to nanometer residuals in one shot, through photon noise, and "
-            "close the loop at gain 1.\n\n"
+            "instrument model — the *Tokyo Drift* sequential-diversity "
+            "analog³, validated on the SCExAO optical bench with exactly "
+            "these inputs. This tutorial takes a third path: **gradient "
+            "descent through the telescope model itself**. The raw F&F "
+            "inputs — frame, known nudge, frame — go into a generic "
+            "least-squares loss, and `jit(vmap(grad))` does the rest.\n\n"
+            "We run it on the same real instrument the coronagraph tutorials "
+            "use: Subaru's aperture as seen by SCExAO/VAMPIRES in the F750 "
+            "filter — a pupil whose bad-actuator masks violate the classical "
+            "algorithm's symmetric-amplitude assumption outright. No "
+            "linearization means no ~1 rad ceiling either: we recover a "
+            "wavefront of **1.5 rad rms** (Strehl 16%) to nanometer "
+            "residuals in one shot, through photon noise, and close the loop "
+            "at gain 1 — and the same recipe keeps working several radians "
+            "deeper.\n\n"
             "Why does F&F need two frames at all? A centrosymmetric pupil "
             "(circular, obstructed, symmetric spiders — most telescopes) has a "
             "*twin-image ambiguity*: the wavefront φ(x) and its parity twin "
@@ -1854,12 +1860,13 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "cannot tell the two apart. The second frame, taken after a known "
             "DM move, breaks the tie: the twin predicts the wrong second image "
             "unless the move has zero even content. We will see all of this "
-            "directly.\n\n"
+            "directly — including what the real pupil's small asymmetries do "
+            "to it.\n\n"
             "This notebook runs in **two acts**. Act 1 is the F&F-equivalent "
-            "workflow on a plain telescope — without the original "
+            "workflow on the plain telescope — without the original "
             "algorithm's caveats. Act 2 sends the *same recipe, unchanged*, "
-            "through a **vector vortex coronagraph**, where the linear "
-            "machinery cannot go at all — and ends on a twist the "
+            "through VAMPIRES' **vector vortex coronagraph**, where the "
+            "linear machinery cannot go at all — and ends on a twist the "
             "coronagraph's own symmetry provides.\n\n"
             'Install the pieces with `pip install "telescope-sim[jax]" zodiax '
             "optax` (zodiax brings equinox; Python ≥ 3.11).\n\n"
@@ -1869,12 +1876,14 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "(2012).\n\n"
             "² V. Korkiakoski *et al.*, “Fast & Furious focal-plane wavefront "
             "sensing,” Appl. Opt. 53, 4565 (2014).\n\n"
-            "³ A deep-learning analog of F&F using the same "
+            "³ *Tokyo Drift*: a deep-learning analog of F&F using the same "
             "two-frames-plus-move inputs, validated on the SCExAO optical "
             "bench: M. Bottom *et al.*, “Sequential coronagraphic low-order "
             "wavefront control,” AO4ELT7 proceedings (2023)."
         ),
         _code(
+            "import copy\n"
+            "\n"
             "import hcipy\n"
             "import numpy as np\n"
             "import matplotlib.pyplot as plt\n"
@@ -1883,26 +1892,26 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "from telescope_sim.config.schema import SimConfig\n"
             "from telescope_sim.helpers.diagnostics import plot_opd_and_psfs\n"
             "\n"
-            "# A deliberately even (centrosymmetric) pupil: 8 m circular aperture,\n"
-            "# 30% central obstruction, 4 symmetric spiders — built by handing the\n"
-            "# stock HCIPy generator to the external_pupil aperture. The corrector\n"
-            "# is a 35-mode Zernike DM (Noll 2-36), observed through one 6% band\n"
-            "# at 750 nm.\n"
+            "# The Subaru/SCExAO VAMPIRES F750 mode, inherited from the fixture\n"
+            "# configs of tutorials 2-3: the parametric SCExAO pupil (7.92 m Subaru\n"
+            "# aperture stopped to 7.79 m, 30% central obscuration, the real spider\n"
+            "# geometry — vanes crossing 0.639 m off-center at 51.75° — plus two\n"
+            "# bad-actuator masks), a 35-mode Zernike DM (Noll 2-36), and one F750\n"
+            "# band: 748 nm, 6.4% bandwidth, 6 mas/pix.\n"
             "config = {\n"
             '    "backend": "jax",\n'
-            '    "pupil": {"resolution": 256, "extent": 8.4},\n'
+            '    "pupil": {"resolution": 256, "extent": 8.1795},\n'
             '    "aperture": {\n'
-            '        "type": "external_pupil", "module": "hcipy",\n'
-            '        "function": "make_obstructed_circular_aperture",\n'
-            '        "mode": "callable", "supersample": 16,\n'
-            '        "kwargs": {"pupil_diameter": 8.0, "central_obscuration_ratio": 0.30,\n'
-            '                   "num_spiders": 4, "spider_width": 0.20},\n'
-            '        "area": 45.7,\n'
+            '        "type": "external_pupil",\n'
+            '        "module": "test_fixtures/helpers/miles_synthpsf/2024-05_vampires_vvc.py",\n'
+            '        "function": "generate_pupil", "mode": "field",\n'
+            '        "kwargs": {"outer": 7.79 / 7.92},\n'
+            '        "area": 190.663,\n'
             "    },\n"
             '    "correctors": {\n'
             '        "dm": {\n'
-            '            "type": "zernike", "n_modes": 35, "zernike_diameter": 8.0,\n'
-            '            "actuate_scale": 1.0e-6,\n'
+            '            "type": "zernike", "n_modes": 35, "zernike_diameter": 7.79,\n'
+            '            "starting_mode": 2, "actuate_scale": 1.0e-6,\n'
             '            "wavefront_role": "actuate",\n'
             '            "target_strategy": "actuators", "target": True,\n'
             "        }\n"
@@ -1910,9 +1919,9 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             '    "corrector_chain": ["dm"],\n'
             '    "focal_planes": {\n'
             '        "band_750": {\n'
-            '            "type": "angular", "central_lam": 0.75e-6,\n'
+            '            "type": "angular", "central_lam": 7.48e-7,\n'
             '            "focal_extent": 0.768, "focal_res": 128,\n'
-            '            "fractional_bandwidth": 0.06, "num_samples": 5,\n'
+            '            "fractional_bandwidth": 0.0642, "num_samples": 5,\n'
             "        }\n"
             "    },\n"
             '    "outputs": {\n'
@@ -1920,13 +1929,13 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             '                "post_processing": [{"type": "max_intensity_norm"}]}\n'
             "    },\n"
             '    "strehl_method": "matched_filter",\n'
-            '    "strehl_core_rad": 5.6e-7,\n'
+            '    "strehl_core_rad": 5.8e-7,\n'
             "}\n"
             "sim = build(SimConfig.model_validate(config))\n"
             "\n"
-            "# The unknown state: 35 Zernike coefficients, about 1.8 rad rms of\n"
-            "# wavefront — far beyond the ~1 rad weak-phase limit of classical\n"
-            "# focal-plane sensing. Strehl is a few percent.\n"
+            "# The unknown state: 35 Zernike coefficients, 1.5 rad rms of\n"
+            "# wavefront — beyond the ~1 rad weak-phase limit of classical\n"
+            "# focal-plane sensing. Strehl is 16%.\n"
             "rng = np.random.default_rng(0)\n"
             "coeffs_true = rng.normal(0.0, 0.06, 35)\n"
             "\n"
@@ -1938,9 +1947,27 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         _md(
             "## The twin: why one frame is not enough\n\n"
             "Build the parity twin — negate the even-azimuthal-order "
-            "coefficients, keep the odd — and render both. The two wavefronts "
-            "are entirely different, yet their PSFs agree to machine precision: "
-            "no amount of fitting a single frame can choose between them."
+            "coefficients, keep the odd — and render both. The real pupil "
+            "tells this story twice over. Subaru's aperture is point-"
+            "symmetric, off-center spider crossing and all: the four vanes "
+            "map onto each other under point reflection. Switch off the "
+            "SCExAO bad-actuator masks (`actuators: false`) and the two "
+            "wavefronts — entirely different — produce PSFs that agree to "
+            "machine precision: no amount of fitting a single frame can "
+            "choose between them.\n\n"
+            "The full pupil's masks are the only asymmetric elements, and "
+            "they leak a whisper of parity information: the twin's frame now "
+            "differs by a speckle pattern one to two orders of magnitude "
+            "below the local intensity. That whisper is real leverage — it "
+            "is exactly the effect an *asymmetric-pupil* wavefront sensor "
+            "engineers on purpose, and a patient multi-start fit can "
+            "usually recover the wavefront from a single frame on this "
+            "pupil. But the margin is only a factor of ~2 over the shot "
+            "noise of the frames we are about to take, and it would vanish "
+            "entirely on a cleaner telescope. The F&F move manufactures a "
+            "discrimination an order of magnitude stronger, on *any* pupil "
+            "— that robustness, not bare feasibility, is what the second "
+            "frame buys."
         ),
         _code(
             "import jax\n"
@@ -1952,29 +1979,43 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "twin_sign = np.where(np.abs(m_orders) % 2 == 1, 1.0, -1.0)\n"
             "coeffs_twin = twin_sign * coeffs_true\n"
             "\n"
-            "forward = sim.forward_fn()\n"
+            "# The same instrument with the bad-actuator masks switched off is\n"
+            "# exactly centrosymmetric.\n"
+            "config_sym = copy.deepcopy(config)\n"
+            'config_sym["aperture"]["kwargs"]["actuators"] = False\n'
+            "sim_sym = build(SimConfig.model_validate(config_sym))\n"
+            "\n"
+            "forward, forward_sym = sim.forward_fn(), sim_sym.forward_fn()\n"
             "\n"
             "\n"
-            "def frame(coeffs):\n"
-            '    img = forward({"dm": jnp.asarray(coeffs)})["band_750"]\n'
+            "def frame(fwd, coeffs):\n"
+            '    img = fwd({"dm": jnp.asarray(coeffs)})["band_750"]\n'
             "    return img / img.sum()  # flux-normalized: photometry-free\n"
             "\n"
             "\n"
-            "img_true, img_twin = np.asarray(frame(coeffs_true)), np.asarray(frame(coeffs_twin))\n"
-            'print(f"twin max image difference: {np.abs(img_true - img_twin).max():.2e} "\n'
-            '      f"(peak {img_true.max():.2e})")\n'
+            "rows = []\n"
+            "for fwd, label in [(forward_sym, 'masks off (point-symmetric)'),\n"
+            "                   (forward, 'full SCExAO pupil')]:\n"
+            "    img_t = np.asarray(frame(fwd, coeffs_true))\n"
+            "    img_w = np.asarray(frame(fwd, coeffs_twin))\n"
+            "    rows.append((label, img_t, img_w))\n"
+            "    print(f'{label}: twin max image difference '\n"
+            "          f'{np.abs(img_t - img_w).max():.2e} (peak {img_t.max():.2e})')\n"
+            "img_true, img_twin = rows[1][1], rows[1][2]\n"
             "\n"
-            "fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))\n"
-            "peak = img_true.max()\n"
-            "for ax, img, title in [\n"
-            '    (axes[0], img_true, "PSF of the true wavefront"),\n'
-            '    (axes[1], img_twin, "PSF of the parity twin"),\n'
-            '    (axes[2], np.abs(img_true - img_twin) + peak * 1e-16, "|difference|"),\n'
-            "]:\n"
-            '    im = ax.imshow(img, cmap="inferno", norm=LogNorm(vmin=peak * 1e-7, vmax=peak))\n'
-            "    ax.set_title(title)\n"
-            '    ax.axis("off")\n'
-            "    fig.colorbar(im, ax=ax, fraction=0.046)\n"
+            "fig, axes = plt.subplots(2, 3, figsize=(13, 8.4))\n"
+            "for row_axes, (label, img_t, img_w) in zip(axes, rows):\n"
+            "    peak = img_t.max()\n"
+            "    for ax, img, title in [\n"
+            "        (row_axes[0], img_t, f'true wavefront — {label}'),\n"
+            "        (row_axes[1], img_w, 'parity twin'),\n"
+            "        (row_axes[2], np.abs(img_t - img_w) + peak * 1e-16, '|difference|'),\n"
+            "    ]:\n"
+            '        im = ax.imshow(img, cmap="inferno",\n'
+            "                       norm=LogNorm(vmin=peak * 1e-7, vmax=peak))\n"
+            "        ax.set_title(title, fontsize=10)\n"
+            '        ax.axis("off")\n'
+            "        fig.colorbar(im, ax=ax, fraction=0.046)\n"
             "fig.tight_layout()\n"
             "plt.show()\n"
         ),
@@ -1984,9 +2025,12 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "*random* DM move (a fraction of a radian — the star stays on "
             "target), take a second frame. Both frames are detected at a "
             "10⁶-photon budget — the shot-noise speckle is plainly visible in "
-            "the wings. Wrapping `forward_fn` in a `zodiax.Base` module makes "
-            "the coefficient vector a model parameter, dLux-style; the known "
-            "move enters as an offset at evaluation time."
+            "the wings, riding just above the actuator masks' faint parity "
+            "signal; the known move is what breaks the twin with authority. "
+            "Wrapping "
+            "`forward_fn` in a `zodiax.Base` module makes the coefficient "
+            "vector a model parameter, dLux-style; the known move enters as "
+            "an offset at evaluation time."
         ),
         _code(
             "import equinox as eqx\n"
@@ -2100,8 +2144,8 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
         _md(
             "## The recovered wavefront\n\n"
             "All 35 coefficients land on the diagonal — including the even-m "
-            "modes a single frame is blind to (red). The residuals are a few "
-            "nanometers of OPD, set by the photon noise."
+            "modes a single frame is (all but) blind to (red). The residuals "
+            "are a few nanometers of OPD, set by the photon noise."
         ),
         _code(
             "t, h = coeffs_true, coeffs_rec\n"
@@ -2176,38 +2220,44 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "Focal-plane sensing *through a coronagraph* is where the linear "
             "F&F machinery stops entirely: the vortex's complex focal-plane "
             "mask breaks the even/odd image algebra it is built on — this is "
-            "the regime the deep-learning analog³ was invented for. For "
-            "gradient descent nothing changes: the coronagraph is just more "
-            "differentiable model, and the recipe below is *identical* to "
-            "act 1's.\n\n"
+            "the regime the *Tokyo Drift* deep-learning analog³ was invented "
+            "for. For gradient descent nothing changes: the coronagraph is "
+            "just more differentiable model, and the recipe below is "
+            "*identical* to act 1's. The configuration is VAMPIRES' vector "
+            "vortex mode from the same fixture lineage: a charge-4 VVC with "
+            "the matching parametric Lyot stop (undersized outer edge, "
+            "oversized obscuration and spiders).\n\n"
             "The twin ambiguity survives the coronagraph in a surprising "
-            "way. A charge +2 vortex maps the parity twin's image onto the "
-            "truth's image *through charge −2* — a charge swap — and an "
-            "unpolarized vector vortex averages the two charges, so the "
-            "average is blind to the swap: behind the VVC the twin is exactly "
-            "as invisible as behind no coronagraph at all. One frame cannot "
-            "choose; the F&F pair still can. (Hold on to that charge-swap "
-            "fact — it pays off at the end.)\n\n"
+            "way. A charge +4 vortex maps the parity twin's image onto the "
+            "truth's image *through charge −4* — a charge swap — and an "
+            "unpolarized vector vortex averages the two charges, so for the "
+            "point-symmetric part of the pupil the average is blind to the "
+            "swap: behind the VVC the twin is exactly as hidden as behind no "
+            "coronagraph — down to the same faint actuator-mask fingerprint, "
+            "which a single-frame fit must again pick out of the shot noise "
+            "by a whisker. The F&F pair lifts the twin clear of the noise, "
+            "exactly as in act 1. (Hold on to that charge-swap fact — it "
+            "pays off at the end.)\n\n"
             "A coronagraph operates behind an adaptive-optics system, so act "
-            "2's unknown wavefront is a post-AO residual of ~0.9 rad rms. The "
+            "2's unknown wavefront is a post-AO residual of ~1 rad rms. The "
             "vortex propagation train is heavier than a plain focal plane, so "
             "this act runs on a 128-pixel pupil grid to keep the notebook "
             "quick."
         ),
         _code(
-            "import copy\n"
-            "\n"
             "config_vvc = copy.deepcopy(config)\n"
             'config_vvc["pupil"]["resolution"] = 128\n'
             'config_vvc["coronagraph"] = {\n'
-            '    "type": "vector_vortex", "charge": 2,\n'
-            '    "lyot": {"type": "external_pupil", "module": "hcipy",\n'
-            '             "function": "make_circular_aperture", "mode": "callable",\n'
-            '             "kwargs": {"diameter": 7.2}, "supersample": 16},\n'
+            '    "type": "vector_vortex", "charge": 4,\n'
+            '    "lyot": {"type": "external_pupil",\n'
+            '             "module": config["aperture"]["module"],\n'
+            '             "function": "generate_pupil", "mode": "field",\n'
+            '             "kwargs": {"outer": 0.9, "inner": 0.43,\n'
+            '                        "scale": 1.4, "spider_scale": 1.6}},\n'
             "}\n"
             "sim_vvc = build(SimConfig.model_validate(config_vvc))\n"
             "\n"
-            "coeffs_vvc_true = rng.normal(0.0, 0.03, 35)  # ~0.9 rad rms post-AO residual\n"
+            "coeffs_vvc_true = rng.normal(0.0, 0.03, 35)  # ~1 rad rms post-AO residual\n"
             "\n"
             "truth_vvc = FFModel(sim_vvc, coeffs_vvc_true)\n"
             "twin_vvc = FFModel(sim_vvc, twin_sign * coeffs_vvc_true)\n"
@@ -2310,12 +2360,15 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "## The polarization twist: one frame, no nudge\n\n"
             "Now cash in the charge-swap fact. A *vector* vortex acts on the "
             "two circular polarizations with opposite charges — the "
-            "unpolarized image averages them, which is what restored the twin "
-            "degeneracy. But image a **single polarization channel** and only "
-            "one charge remains: the twin now produces the *opposite-charge* "
-            "image, which is visibly different. The ambiguity that has driven "
-            "this entire notebook — the reason Fast & Furious needs two "
-            "frames — simply never arises.\n\n"
+            "unpolarized image averages them, which is what preserved the "
+            "twin degeneracy. But image a **single polarization channel** and "
+            "only one charge remains: the twin now produces the "
+            "*opposite-charge* image, which differs at full speckle "
+            "amplitude — no faint mask whisper, but a factor-of-order-unity "
+            "signature. The ambiguity that has driven this entire notebook "
+            "simply never arises: in the validation campaigns behind this "
+            "tutorial the twin basin doesn't just lose the argmin, it stops "
+            "capturing descents at all.\n\n"
             "So through one polarization channel, a **single frame with no "
             "diversity move at all** determines the full wavefront:"
         ),
@@ -2370,17 +2423,28 @@ TUTORIALS: dict[str, list[tuple[str, str]]] = {
             "## Notes\n\n"
             "- The classical algorithm's restrictions came from its "
             "linearization, not from the measurement: with the model "
-            "differentiable end-to-end, the same two frames handle 1.8 rad of "
-            "aberration, any pupil, a vector vortex coronagraph, and photon "
+            "differentiable end-to-end, the same two frames handle "
+            "multi-radian aberrations, the real SCExAO pupil (asymmetric "
+            "amplitude and all), a vector vortex coronagraph, and photon "
             "noise — and the recipe contains no step specific to any of "
             "them. The coronagraph entered this notebook purely as "
             "configuration.\n"
-            "- These are demonstrations against the instrument model itself "
-            "(with photon shot noise); the validation campaigns behind the "
-            "pinned numbers reproduce every conclusion — the pair's "
-            "necessity behind the VVC, its nanometer-level accuracy, and the "
-            "single-channel result — against independently discretized "
-            "data.\n"
+            "- The validation campaigns behind the pinned numbers "
+            "(independently discretized frames + shot noise, three truth "
+            "seeds per case) bound the envelope: the pair recovers ~2.5 rad "
+            "rms of initial error reliably, hangs on near ~3 rad as "
+            "truth-basin capture thins to ~1/32 (working that deep, scale "
+            "the restarts — they are cheap under `vmap`), and collapses "
+            "past ~4 rad. In photons it delivers nanometer residuals at "
+            "10⁶–10⁷ per frame, ~10 nm at 10⁵, tens of nanometers at 10⁴, "
+            "and breaks down at 10³. Behind the VVC the same recipe holds "
+            "act-1 accuracy at post-AO depths and degrades gracefully down "
+            "to 10⁴ photons.\n"
+            "- The single-frame results replicate against independent "
+            "discretization too: the masks' slim margin holds up (one frame "
+            "usually suffices on this pupil, at 2× the noise floor), and "
+            "the single-polarization-channel retrieval finishes with zero "
+            "twin-basin captures in every campaign seed.\n"
             "- Swap the corrector or the aperture freely: `forward_fn` probes "
             "correctors numerically, so a segmented mirror or an "
             "`actuator_grid` DM exports identically.\n"

@@ -6,6 +6,22 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- Tutorial 09 ("Differentiable Fast & Furious") now runs on the real
+  Subaru/SCExAO VAMPIRES F750 instrument mode used by the coronagraph
+  tutorials — the parametric SCExAO pupil with its offset spiders and
+  bad-actuator masks, and (act 2) the charge-4 vector vortex with its
+  matching parametric Lyot stop — replacing the synthetic
+  centrosymmetric pupil of the first edition. The twin-ambiguity act now
+  demonstrates both regimes on one instrument: exact parity degeneracy
+  for the point-symmetric Subaru aperture (actuator masks off), and the
+  faint parity signal the real masks leak — enough for single-frame
+  retrieval at high photon counts, with the Fast & Furious frame pair
+  supplying the order-of-magnitude, pupil-independent discrimination.
+  The tutorial also now credits the *Tokyo Drift* branding of the
+  neural-network Fast & Furious analog it contrasts against.
+
 ## [2.3.2] - 2026-08-14
 
 Full coronagraph coverage on the JAX backend: the vortex and

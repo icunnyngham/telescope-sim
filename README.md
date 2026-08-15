@@ -26,7 +26,7 @@ model for gradient-based phase retrieval, calibration, and ML pipelines.
 
 ## Status
 
-**v2.3.2 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
+**v2.3.3 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex, vector-vortex, and classical Lyot
 coronagraphs, angular and physical focal planes, and multi-mode-fiber dual
@@ -102,7 +102,7 @@ install with dev/doc extras.
 from telescope_sim import TelescopeSim
 import numpy as np
 
-# Bundled preset (the sELF array: 15 segments, J band)
+# Bundled preset (the sELF array: 15 segments, 0.9-1.05 um FPWFS band)
 sim = TelescopeSim.from_preset("elf_15seg")
 
 # Or a custom YAML

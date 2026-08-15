@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.3.3] - 2026-08-15
+
+The bundled instrument models catch up with the hardware they
+describe: the `elf_15seg` preset and its tutorials now carry the
+current sELF optical design and observing band, and the Fast &
+Furious tutorial runs on the real Subaru/SCExAO VAMPIRES F750
+instrument mode end-to-end, with retrieval limits re-validated on
+both configurations.
+
 ### Changed
 
 - The `elf_15seg` preset and the tutorials built on it (01, 07, 08) now
@@ -1164,7 +1173,8 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.3...HEAD
+[2.3.3]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.2.0...v2.3.0

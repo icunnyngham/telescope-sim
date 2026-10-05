@@ -1,0 +1,57 @@
+# VAMPIRES F750 (750-50), no coronagraph: the 2024 simulation configuration.
+#
+#   aperture       the 2024 SCExAO pupil script (miles_pupil_2024.py), undersized to 7.79 m:
+#                  two 0.632 m dead-actuator masks, one with a thin support spider; uniform light
+#   corrector      ideal Zernike corrector: 35 modes (Noll 2-36) over D = 7.79 m, each mode
+#                  peak-normalised; 1 unit = 1 um of peak surface = 2 um of peak path
+#   focal plane    748 nm, 48 nm band sampled at 5 equal-weight wavelengths (724-772 nm);
+#                  128 px at 6.000 mas/px
+#   output         each image min-max normalised to [0, 1]
+#
+# `module` is a file path, resolved against the working directory: run from this folder, or make it absolute.
+
+pupil:
+  resolution: 256
+  extent: 8.1795            # 1.05 * 7.79 m
+
+aperture:
+  type: external_pupil
+  module: miles_pupil_2024.py
+  function: generate_pupil
+  mode: field
+  kwargs:
+    outer: 0.9835858585858586    # 7.79 / 7.92
+  area: 190.64472274970836       # pi * 7.79^2, the value the 2024 simulations used; read only by a noise stage
+
+correctors:
+  zernike_dm:
+    type: zernike
+    n_modes: 35
+    zernike_diameter: 7.79
+    starting_mode: 2
+    actuate_scale: 1.0e-6
+    wavefront_role: actuate
+    target_strategy: actuators
+    target: true
+
+corrector_chain: [zernike_dm]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 0.748e-6
+    focal_extent: 0.768         # 6.000 mas/pix * 128 pix
+    focal_res: 128
+    fractional_bandwidth: 0.06417112299465241   # 48 nm / 748 nm
+    num_samples: 5
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing:
+      - type: max_intensity_norm
+      - type: per_sample_norm
+
+strehl_core_rad: null

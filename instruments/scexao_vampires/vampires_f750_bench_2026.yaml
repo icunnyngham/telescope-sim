@@ -1,11 +1,13 @@
-# VAMPIRES F750 (750-50), no coronagraph: the 2024 simulation configuration.
+# VAMPIRES F750 (750-50), no coronagraph, on the SCExAO internal source as fitted to 2026 images. PROVISIONAL.
 #
-#   aperture       the 2024 SCExAO pupil script (miles_pupil_2024.py), undersized to 7.79 m:
-#                  two 0.632 m dead-actuator masks, one with a thin support spider; uniform light
+# vampires_f750_2024.yaml with two things changed: the aperture and the plate scale (focal_extent).
+#
+#   aperture       the 2024 script edited (bench_pupil_2026.py), undersized to 7.79 m:
+#                  one 0.40 m dead-actuator mask on a spider, one small defect; gaussian illumination
 #   corrector      ideal Zernike corrector: 35 modes (Noll 2-36) over D = 7.79 m, each mode
 #                  peak-normalised; 1 unit = 1 um of peak surface = 2 um of peak path
 #   focal plane    748 nm, 48 nm band sampled at 5 equal-weight wavelengths (724-772 nm);
-#                  128 px at 6.000 mas/px
+#                  128 px at 5.735 mas/px
 #   output         each image min-max normalised to [0, 1]
 #
 # `module` is a file path, resolved against the working directory: run from this folder, or make it absolute.
@@ -16,11 +18,13 @@ pupil:
 
 aperture:
   type: external_pupil
-  module: miles_pupil_2024.py
+  module: bench_pupil_2026.py
   function: generate_pupil
   mode: field
   kwargs:
     outer: 0.9835858585858586    # 7.79 / 7.92
+    illum_q: 0.073               # 1/m^2; amplitude = exp(-q/2 |r - r0|^2); 0 = uniform
+    illum_offset: [0.44, 0.79]   # r0 in m; differed by ~0.4 m between dates: a nuisance, not a constant
   area: 190.64472274970836       # pi * 7.79^2, the value the 2024 simulations used; read only by a noise stage
 
 correctors:
@@ -40,7 +44,7 @@ focal_planes:
   filter1:
     type: angular
     central_lam: 0.748e-6
-    focal_extent: 0.768         # 6.000 mas/pix * 128 pix
+    focal_extent: 0.73408       # 5.735 mas/pix * 128 pix
     focal_res: 128
     fractional_bandwidth: 0.06417112299465241   # 48 nm / 748 nm
     num_samples: 5

@@ -1,5 +1,32 @@
 """
 Simulate the SCExAO pupil
+
+This is the 2024 SCExAO pupil script (miles_pupil_2024.py) edited to describe
+the pupil as seen on the internal calibration source in 2026. PROVISIONAL: the
+changes were fitted to focal-plane images taken on the internal source on
+three dates in 2026 and agree with one pupil-camera image; they have not been
+confirmed by the instrument team.
+
+Unchanged from 2024: the primary, the secondary and the four spiders.
+
+Changed:
+    mask          ONE dead-actuator mask, 0.40 m across, at (1.74, 1.40) m,
+                  on the first-quadrant spider. The 2024 script has two masks
+                  of 0.632 m and a thin support spider for the second; that
+                  second mask and its spider are gone.
+    defect        NEW. One opaque disc, 0.25 m across, at (2.30, 0.14) m, in
+                  the open pupil. The images fit a ~0.7 um optical-path bump
+                  (a stuck actuator) equally well; this script is amplitude
+                  only.
+    illumination  NEW. The pupil is lit by a gaussian beam: amplitude
+                  exp(-q/2 * |r - r0|^2) with q = 0.073 /m^2 (1/e^2 intensity
+                  radius 5.2 m on a 3.9 m pupil radius). r0 = (0.44, 0.79) m
+                  on one date and about 0.4 m further out on two others:
+                  treat r0 as a nuisance parameter, not a constant.
+
+Focal-plane images fix the positions only up to a half turn of all features
+together. With actuators=False, defect=False, illum_q=0 the output is
+identical to the 2024 script's with actuators=False.
 """
 from argparse import ArgumentParser
 
@@ -17,10 +44,12 @@ SPIDER_WIDTH = 0.1735  # m
 SPIDER_OFFSET = 0.639  # m, spider intersection offset
 SPIDER_ANGLE = 51.75  # deg
 # PUPIL_ANGLE = -39  # deg
-ACTUATOR_SPIDER_WIDTH = 0.089  # m
-ACTUATOR_SPIDER_OFFSET = (0.521, -1.045)
-ACTUATOR_DIAMETER = 0.632  # m
-ACTUATOR_OFFSET = ((1.765, 1.431), (-0.498, -2.331))  # (x, y), m  # (x, y), m
+ACTUATOR_DIAMETER = 0.40  # m
+ACTUATOR_OFFSET = (1.74, 1.40)  # (x, y), m
+DEFECT_DIAMETER = 0.25  # m
+DEFECT_OFFSET = (2.30, 0.14)  # (x, y), m
+ILLUM_Q = 0.073  # 1/m^2, amplitude = exp(-ILLUM_Q / 2 * |r - r0|^2)
+ILLUM_OFFSET = (0.44, 0.79)  # r0 (x, y), m
 
 ## command-line arg parsing
 parser = ArgumentParser()
@@ -99,6 +128,9 @@ def generate_pupil(
     spiders: bool = True,
     actuators: bool = True,
     pupil_grid = None,
+    defect: bool = True,
+    illum_q: float = ILLUM_Q,
+    illum_offset = ILLUM_OFFSET,
 ):
     f"""
     Generate a SCExAO pupil parametrically.
@@ -120,11 +152,19 @@ def generate_pupil(
     spiders : bool, optional
         Add spiders to pupil. Default is True
     actuators : bool, optional
-        Add bad actuator masks and spider. Default is True
+        Add bad actuator mask. Default is True
+    defect : bool, optional
+        Add the small opaque defect in the open pupil. Default is True
+    illum_q : float, optional
+        Gaussian illumination parameter in 1/m^2; 0 is uniform illumination. Default is {ILLUM_Q}
+    illum_offset : (float, float), optional
+        Centre (x, y) of the gaussian illumination in meters. Default is {ILLUM_OFFSET}
 
     Notes
     -----
-    The smallest element in the SCExAO pupil is the bad actuator spider, which is approximately {ACTUATOR_SPIDER_WIDTH*1e3:.1f} mm wide. This is about 0.7\% of the telescope diameter, which means you need to have a miinimum of ~142 pixels across the aperture to sample this element.
+    The smallest element in this pupil is the spiders, which are approximately {SPIDER_WIDTH*1e3:.1f} mm wide. This is about 2.2\% of the telescope diameter, which means you need to have a miinimum of ~46 pixels across the aperture to sample this element.
+
+    With gaussian illumination the output is an amplitude, not a binary transmission mask.
 
     """
     pupil_diameter = PUPIL_DIAMETER * outer
@@ -188,36 +228,33 @@ def generate_pupil(
 
     # add actuator masks to field generator
     if actuators:
-        # circular masks
+        # circular mask
         actuator_diameter = ACTUATOR_DIAMETER * scale
         actuator_mask_1 = hp.make_obstruction(
             hp.circular_aperture(diameter=actuator_diameter,
-                                 center=ACTUATOR_OFFSET[0]))
+                                 center=ACTUATOR_OFFSET))
         pupil_field = field_combine(pupil_field, actuator_mask_1)
 
-        actuator_mask_2 = hp.make_obstruction(
-            hp.circular_aperture(diameter=actuator_diameter,
-                                 center=ACTUATOR_OFFSET[1]))
-        pupil_field = field_combine(pupil_field, actuator_mask_2)
-
-        # spider
-        sint = np.sin(np.deg2rad(SPIDER_ANGLE))
-        cost = np.cos(np.deg2rad(SPIDER_ANGLE))
-        actuator_spider_width = ACTUATOR_SPIDER_WIDTH * scale
-        actuator_spider = hp.make_spider(
-            ACTUATOR_SPIDER_OFFSET,
-            (
-                ACTUATOR_SPIDER_OFFSET[0] - cost * pupil_diameter,
-                ACTUATOR_SPIDER_OFFSET[1] - sint * pupil_diameter,
-            ),
-            spider_width=actuator_spider_width,
-        )
-        pupil_field = field_combine(pupil_field, actuator_spider)
+    # add defect to field generator
+    if defect:
+        defect_mask = hp.make_obstruction(
+            hp.circular_aperture(diameter=DEFECT_DIAMETER,
+                                 center=DEFECT_OFFSET))
+        pupil_field = field_combine(pupil_field, defect_mask)
 
     rotated_pupil_field = hp.make_rotated_aperture(pupil_field,
                                                    np.deg2rad(angle))
 
     pupil = hp.evaluate_supersampled(rotated_pupil_field, grid, oversample)
+
+    # gaussian illumination, evaluated at the pixel centers
+    if illum_q:
+        sint = np.sin(np.deg2rad(angle))
+        cost = np.cos(np.deg2rad(angle))
+        x0 = cost * illum_offset[0] - sint * illum_offset[1]
+        y0 = sint * illum_offset[0] + cost * illum_offset[1]
+        pupil = pupil * np.exp(-0.5 * illum_q *
+                               ((grid.x - x0)**2 + (grid.y - y0)**2))
     return pupil
 
 

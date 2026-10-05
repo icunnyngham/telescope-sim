@@ -1,12 +1,10 @@
-# VAMPIRES F750 (750-50), no coronagraph, on the SCExAO internal source as fitted to 2026 images. PROVISIONAL.
+# VAMPIRES F750 (750-50), no coronagraph, with the SCExAO pupil as fitted to 2026 images. PROVISIONAL.
 #
 # vampires_f750_2024.yaml with two things changed: the aperture and the plate scale (focal_extent).
-# This is vampires_f750_2026.yaml plus the gaussian beam of the internal source (the two `illum_*` lines):
-# use it to match internal-source images. The beam changed between dates and presumably does not apply on sky.
+# Uniform illumination. vampires_f750_bench_2026.yaml is this file plus the internal source's gaussian beam.
 #
 #   aperture       the 2024 script edited (bench_pupil_2026.py), undersized to 7.79 m:
-#                  one 0.40 m dead-actuator mask on a spider, one small defect; gaussian illumination
-#                  (internal source only)
+#                  one 0.40 m dead-actuator mask on a spider, one small defect; uniform light
 #   corrector      ideal Zernike corrector: 35 modes (Noll 2-36) over D = 7.79 m, each mode
 #                  peak-normalised; 1 unit = 1 um of peak surface = 2 um of peak path
 #   focal plane    748 nm, 48 nm band sampled at 5 equal-weight wavelengths (724-772 nm);
@@ -26,8 +24,6 @@ aperture:
   mode: field
   kwargs:
     outer: 0.9835858585858586    # 7.79 / 7.92
-    illum_q: 0.073               # 1/m^2; amplitude = exp(-q/2 |r - r0|^2); internal source only
-    illum_offset: [0.44, 0.79]   # r0 in m; differed by ~0.4 m between dates: a nuisance, not a constant
   area: 190.64472274970836       # pi * 7.79^2, the value the 2024 simulations used; read only by a noise stage
 
 correctors:

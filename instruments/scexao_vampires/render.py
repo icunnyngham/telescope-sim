@@ -2,7 +2,7 @@
 
     python render.py [--png pupil_2024_vs_2026.png]
 
-Builds both configs in this folder with telescope-sim, prints the values a
+Builds the configs in this folder with telescope-sim, prints the values a
 second machine should reproduce, and (with --png) saves the pupil amplitudes
 and at-rest PSFs.
 """
@@ -19,7 +19,8 @@ os.chdir(Path(__file__).resolve().parent)
 
 CONFIGS = {
     "2024": "vampires_f750_2024.yaml",
-    "2026 (provisional)": "vampires_f750_bench_2026.yaml",
+    "2026": "vampires_f750_2026.yaml",
+    "2026, internal source": "vampires_f750_bench_2026.yaml",
 }
 
 rendered = {}
@@ -52,7 +53,7 @@ if "--png" in sys.argv:
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
 
-    fig, axes = plt.subplots(2, 2, figsize=(8.4, 8.0))
+    fig, axes = plt.subplots(2, 3, figsize=(12.6, 8.0))
     for col, (label, (amp, ref, half)) in enumerate(rendered.items()):
         ax = axes[0, col]
         im = ax.imshow(amp, origin="lower", extent=[-half, half, -half, half], cmap="gray", vmin=0, vmax=1)

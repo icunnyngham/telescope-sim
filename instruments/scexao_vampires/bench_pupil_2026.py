@@ -18,15 +18,19 @@ Changed:
                   the open pupil. The images fit a ~0.7 um optical-path bump
                   (a stuck actuator) equally well; this script is amplitude
                   only.
-    illumination  NEW. The pupil is lit by a gaussian beam: amplitude
+    illumination  NEW, OPTIONAL, off by default. On the internal source the
+                  pupil is lit by a gaussian beam: amplitude
                   exp(-q/2 * |r - r0|^2) with q = 0.073 /m^2 (1/e^2 intensity
                   radius 5.2 m on a 3.9 m pupil radius). r0 = (0.44, 0.79) m
-                  on one date and about 0.4 m further out on two others:
+                  on one date and about 0.4 m further out on two others.
+                  This belongs to the internal source's beam, not to the
+                  pupil: it changed between dates and presumably does not
+                  apply on sky. Pass illum_q=ILLUM_Q to switch it on, and
                   treat r0 as a nuisance parameter, not a constant.
 
 Focal-plane images fix the positions only up to a half turn of all features
-together. With actuators=False, defect=False, illum_q=0 the output is
-identical to the 2024 script's with actuators=False.
+together. With actuators=False, defect=False the output is identical to the
+2024 script's with actuators=False.
 """
 from argparse import ArgumentParser
 
@@ -48,8 +52,8 @@ ACTUATOR_DIAMETER = 0.40  # m
 ACTUATOR_OFFSET = (1.74, 1.40)  # (x, y), m
 DEFECT_DIAMETER = 0.25  # m
 DEFECT_OFFSET = (2.30, 0.14)  # (x, y), m
-ILLUM_Q = 0.073  # 1/m^2, amplitude = exp(-ILLUM_Q / 2 * |r - r0|^2)
-ILLUM_OFFSET = (0.44, 0.79)  # r0 (x, y), m
+ILLUM_Q = 0.073  # 1/m^2, internal source only: amplitude = exp(-ILLUM_Q / 2 * |r - r0|^2)
+ILLUM_OFFSET = (0.44, 0.79)  # r0 (x, y), m, internal source only
 
 ## command-line arg parsing
 parser = ArgumentParser()
@@ -129,7 +133,7 @@ def generate_pupil(
     actuators: bool = True,
     pupil_grid = None,
     defect: bool = True,
-    illum_q: float = ILLUM_Q,
+    illum_q: float = 0,
     illum_offset = ILLUM_OFFSET,
 ):
     f"""
@@ -156,7 +160,7 @@ def generate_pupil(
     defect : bool, optional
         Add the small opaque defect in the open pupil. Default is True
     illum_q : float, optional
-        Gaussian illumination parameter in 1/m^2; 0 is uniform illumination. Default is {ILLUM_Q}
+        Gaussian illumination parameter in 1/m^2. Default is 0, uniform illumination; the internal source fitted {ILLUM_Q}
     illum_offset : (float, float), optional
         Centre (x, y) of the gaussian illumination in meters. Default is {ILLUM_OFFSET}
 

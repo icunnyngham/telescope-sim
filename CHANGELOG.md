@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `instruments/scexao_vampires/` (repository only — not part of the
+  installed package): the 2024 SCExAO pupil script by Miles Lucas and
+  the 2024 VAMPIRES F750 no-coronagraph configuration that uses it,
+  alongside a provisional 2026 pupil and configuration fitted to
+  internal-source images. The 2026 files are kept as minimal edits of
+  the 2024 files so the changes read as a plain diff; the internal
+  source's gaussian illumination is an opt-in term in a separate
+  configuration.
+
 ## [2.3.3] - 2026-08-15
 
 The bundled instrument models catch up with the hardware they

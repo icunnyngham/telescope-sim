@@ -76,6 +76,16 @@ CASES: dict[str, dict[str, Any]] = {
         "scale_fields": ["actuate_scale"],
         "roundtrip_tol": 0.02,
     },
+    "fourier": {
+        "aperture": _CIRC_APERTURE,
+        "corrector": {
+            "type": "fourier",
+            "n_axis": 4,
+            "actuate_scale": 1.0e-7,
+        },
+        "scale_fields": ["actuate_scale"],
+        "roundtrip_tol": 0.02,
+    },
     "segmented_ptt": {
         "aperture": _SEG_APERTURE,
         "corrector": {

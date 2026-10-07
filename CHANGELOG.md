@@ -6,6 +6,16 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-10-06
+
+The low wind effect, and petal modes in general, become a first-class
+configuration: any pupil can be partitioned into its spider-bounded
+segments and driven by the existing segmented piston/tip/tilt corrector
+(or by petal pistons alone), on both backends. A Fourier-mode deformable
+mirror joins the corrector kinds, and tutorial 10 walks the SCExAO
+case end-to-end. The SCExAO/VAMPIRES instrument models live in the
+repository alongside the package.
+
 ### Added
 
 - Pupil segmentation: any aperture can carry a `segmentation:` block
@@ -1211,7 +1221,8 @@ See per-commit entries below.
   `DeprecationWarning`; explicitly rejects v1 kwargs it can't represent
   yet.
 
-[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.3...HEAD
+[Unreleased]: https://github.com/icunnyngham/telescope-sim/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.3...v2.4.0
 [2.3.3]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.2...v2.3.3
 [2.3.2]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/icunnyngham/telescope-sim/compare/v2.3.0...v2.3.1

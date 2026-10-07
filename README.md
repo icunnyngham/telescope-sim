@@ -26,13 +26,14 @@ model for gradient-based phase retrieval, calibration, and ML pipelines.
 
 ## Status
 
-**v2.3.3 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
+**v2.4.0 — beta, on PyPI.** The pipeline is wired end-to-end and reproduces 10
 reference fixtures spanning segmented/mini-ELF apertures, custom-pupil
 generators, Zernike-mode DMs, vortex, vector-vortex, and classical Lyot
 coronagraphs, angular and physical focal planes, and multi-mode-fiber dual
 outputs. Every fixture outside the fiber path also passes on the JAX backend
-at the same tolerances — all coronagraph kinds run on both backends; only
-the fiber output tap remains HCIPy-only.
+at the same tolerances — all coronagraph kinds, every corrector kind
+(including petal-segmented pupils and the Fourier DM) run on both
+backends; only the fiber output tap remains HCIPy-only.
 
 ### What's new since v2.0.0
 

@@ -8,6 +8,33 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Pupil segmentation: any aperture can carry a `segmentation:` block
+  that partitions the built transmission map into its spider-bounded
+  regions ("petals") by connected-components labeling — `n_segments`
+  regions kept by size, smaller fragments merged into their nearest
+  neighbour (or refused with `merge_fragments: false`), a `threshold`
+  for anti-aliased masks, segments ordered by centroid angle, the merge
+  record kept in the aperture metadata. The result is exactly what a
+  segmented aperture kind produces, so the existing `segmented_ptt`
+  corrector now drives a monolithic spider-cut pupil on both backends.
+  This is the low wind effect / island effect configuration: per-petal
+  piston, tip and tilt (12 modes on a 4-vane pupil) imposed as a
+  disturbance or actuated as a petal element — the standard modal
+  description in the SPHERE, SCExAO and ELT literature.
+- `segmented_ptt` gains `piston_only`: one piston per segment
+  (`(n_segments,)` actuators, tip and tilt held at zero, `fit_surface`
+  returns the piston column) — the ELT-style petal-piston basis.
+- `fourier` corrector: a low-order Fourier-mode deformable mirror
+  (cosine/sine modes on an `n_axis × n_axis` frequency grid, energy
+  sorted, peak normalized, DC mode removed by default, optional
+  `n_modes` truncation) with `fit_surface`, so it serves as a smooth
+  ML action space and as a residual-fit target against segmented or
+  atmospheric disturbances. Runs on both backends.
+- Tutorial 10, "Low wind effect": the SCExAO/VAMPIRES pupil partitioned
+  into its four petals, per-petal piston/tip/tilt kicks and an
+  LWE-scale disturbance, a continuous DM residual-fitting it and the
+  spider-edge residual that remains, `piston_only` petal pistons, and
+  the same chain on the jax backend.
 - `instruments/scexao_vampires/` (repository only — not part of the
   installed package): the 2024 SCExAO pupil script by Miles Lucas and
   the 2024 VAMPIRES F750 no-coronagraph configuration that uses it,

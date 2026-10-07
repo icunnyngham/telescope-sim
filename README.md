@@ -36,6 +36,17 @@ the fiber output tap remains HCIPy-only.
 
 ### What's new since v2.0.0
 
+- **Pupil segmentation and petal modes** (v2.4.0) — an aperture-level
+  `segmentation:` block partitions any built pupil into its
+  spider-bounded regions by connected-components labeling, so the
+  `segmented_ptt` corrector drives a monolithic spider-cut pupil on
+  both backends: per-petal piston, tip and tilt (the low wind effect /
+  island effect basis), or petal pistons alone with the new
+  `piston_only` flag. Tutorial 10 walks the SCExAO/VAMPIRES case.
+- **Fourier-mode DM** (v2.4.0) — the `fourier` corrector: a low-order
+  cosine/sine modal mirror with `fit_surface`, a smooth action space
+  for ML control and a residual-fit target against segmented or
+  atmospheric disturbances. Both backends.
 - **Vortex coronagraphs on JAX** (v2.3.2) — `vortex` and `vector_vortex`
   now run on both backends: the multi-scale propagation scheme is
   replayed in the JAX graph from the exact per-level masks HCIPy
@@ -122,7 +133,8 @@ See [docs/tutorials/](docs/tutorials) for runnable notebooks that exercise the
 sELF segmented array, vortex and Lyot coronagraph, custom-pupil + Zernike DM,
 and fiber MMF paths — plus differentiable-backend showcases: single-frame
 phase retrieval (08) and gradient-descent Fast & Furious diversity retrieval,
-including through the vector vortex coronagraph (09).
+including through the vector vortex coronagraph (09) — and the low wind
+effect as per-petal piston/tip/tilt on the SCExAO pupil (10).
 
 ## JAX compute backend (optional)
 

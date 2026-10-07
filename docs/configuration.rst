@@ -8,7 +8,14 @@ top-level shape is::
       resolution: <int>
       extent: <float>
 
-    aperture: { type: <name>, ... }
+    aperture:
+      type: <name>
+      # ... type-specific kwargs
+      segmentation:                       # optional, any aperture kind
+        method: connected_components
+        n_segments: <int>
+        merge_fragments: <bool>           # default true
+        threshold: <float>                # default 0.0
 
     correctors:
       <name>:
@@ -94,16 +101,45 @@ Apertures
     ``function``, ``mode`` (``"field"`` or ``"callable"``), ``kwargs``,
     ``area``, ``supersample`` (only when ``mode == "callable"``).
 
+``segmentation`` (block on any aperture)
+    Partitions the built transmission map into its spider-bounded
+    regions ("petals") by connected-components labeling and fills in
+    the segments a segmented aperture kind would have produced, so
+    ``segmented_ptt`` can drive a monolithic pupil — the low wind effect
+    / island effect configuration. Fields: ``method``
+    (``connected_components``), ``n_segments`` (regions to keep: 4 for a
+    4-vane spider, 6 for an ELT-style pupil), ``merge_fragments``
+    (absorb extra regions, e.g. a thin obstruction splitting one petal,
+    into the nearest kept region; ``false`` refuses them), ``threshold``
+    (a pixel is lit where transmission exceeds it; raise above 0 when an
+    anti-aliased thin spider would bridge regions). Segments are ordered
+    by the polar angle of their centroids; fewer regions than requested
+    is an error, and the block is refused on an aperture that already
+    defines segments. The merge record is kept in the aperture result's
+    ``metadata["segmentation"]``.
+
 Correctors
 ~~~~~~~~~~
 
 ``segmented_ptt``
-    Fields: ``piston_scale``, ``tip_tilt_scale``. Actuator shape
-    ``(n_segments, 3)``.
+    Fields: ``piston_scale``, ``tip_tilt_scale``, ``piston_only``.
+    Actuator shape ``(n_segments, 3)`` — piston, tip, tilt per segment —
+    or ``(n_segments,)`` pistons with ``piston_only: true`` (tip and tilt
+    held at zero; ``fit_surface`` returns the piston column). Segments
+    come from a segmented aperture kind or from the aperture's
+    ``segmentation`` block.
 
 ``zernike``
     Fields: ``n_modes``, ``zernike_diameter``, ``starting_mode``,
     ``actuate_scale``.
+
+``fourier``
+    Fields: ``n_axis`` (frequency-grid axis count; ``n_axis² + 2·n_axis − 1``
+    cosine/sine modes on an even pupil grid, 47 for the default 6),
+    ``n_modes`` (optional truncation to the lowest-energy modes),
+    ``remove_piston`` (default ``true``: drop the DC mode, giving 46 by
+    default), ``actuate_scale``. Modes are energy sorted and peak
+    normalized; actuator shape ``(n_actuators,)``.
 
 ``actuator_grid``
     Fields: ``num_actuators`` (per side), ``actuator_pitch``

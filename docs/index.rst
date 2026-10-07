@@ -47,6 +47,7 @@ validates the config with pydantic v2 and instantiates a
    tutorials/07_jax_backend_batches
    tutorials/08_phase_retrieval
    tutorials/09_differentiable_fast_furious
+   tutorials/10_low_wind_effect
 
 
 .. toctree::

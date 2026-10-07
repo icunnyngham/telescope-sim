@@ -55,10 +55,16 @@ Concrete implementations
 .. automodule:: telescope_sim.apertures.external_pupil
    :members:
 
+.. automodule:: telescope_sim.apertures.segmentation
+   :members:
+
 .. automodule:: telescope_sim.correctors.segmented_ptt
    :members:
 
 .. automodule:: telescope_sim.correctors.zernike
+   :members:
+
+.. automodule:: telescope_sim.correctors.fourier
    :members:
 
 .. automodule:: telescope_sim.correctors.actuator_grid

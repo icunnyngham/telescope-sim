@@ -453,3 +453,87 @@ def test_atmos_without_phase_for_is_refused_on_jax():
     hcipy_sim.sample(atmos=callable_only)  # hcipy accepts any wf->wf callable
     with pytest.raises(NotImplementedError, match=r"requires an atmosphere exposing"):
         jax_sim.sample(atmos=callable_only)
+
+
+# --- Partitioned pupil: per-petal PTT + Fourier DM ----------------------------
+
+
+def _petal_config(mutate=None) -> SimConfig:
+    """The petal/Fourier parity YAML with its aperture module path resolved."""
+    with open(DATA / "petal_ptt_fourier.yaml") as f:
+        raw = yaml.safe_load(f)
+    raw["aperture"]["module"] = str(Path(__file__).parent / raw["aperture"]["module"])
+    if mutate is not None:
+        mutate(raw)
+    return SimConfig.model_validate(raw)
+
+
+@pytest.fixture(scope="module")
+def petal_pair() -> tuple[TelescopeSim, TelescopeSim]:
+    config = _petal_config()
+    return build(config, backend="hcipy"), build(config, backend="jax")
+
+
+@pytest.fixture(scope="module")
+def petal_actuations() -> dict[str, np.ndarray]:
+    rng = np.random.default_rng(31)
+    return {"petals": rng.normal(size=(4, 3)), "fourier_dm": 0.3 * rng.normal(size=46)}
+
+
+def test_petal_partition_is_shared_geometry(petal_pair):
+    """Segmentation runs once on numpy; both backends see identical masks."""
+    hcipy_sim, jax_sim = petal_pair
+    h, d = hcipy_sim._c.correctors[0], jax_sim._c.correctors[0]
+    assert h.n_segments == d.n_segments == 4
+    np.testing.assert_array_equal(h.segment_coords, d.segment_coords)
+    for sh, sd in zip(h._sm.segments, d._sm.segments, strict=True):
+        np.testing.assert_array_equal(np.asarray(sh), np.asarray(sd))
+    assert jax_sim._c.correctors[1].n_actuators == 46
+
+
+def test_petal_ptt_fourier_images_and_echo_parity(petal_pair, petal_actuations):
+    hcipy_sim, jax_sim = petal_pair
+    h_out = hcipy_sim.sample(petal_actuations)
+    d_out = jax_sim.sample(petal_actuations)
+    assert_image_parity(d_out["images"]["psf"], h_out["images"]["psf"])
+    # The residual-fit echo is shared numpy code: bit-for-bit.
+    np.testing.assert_array_equal(
+        d_out["actuations"]["fourier_dm"], h_out["actuations"]["fourier_dm"]
+    )
+    # And the petal disturbance genuinely perturbs the image.
+    ref = hcipy_sim.focal_planes["filter1"].reference_psf
+    assert np.max(np.abs(h_out["images"]["psf"][..., 0] - ref)) > 1e-3 * ref.max()
+
+
+def test_petal_forward_fn_matches_hcipy_chain(petal_pair, petal_actuations):
+    hcipy_sim, jax_sim = petal_pair
+    fwd = jax_sim.forward_fn()
+    assert fwd.corrector_names == ("petals", "fourier_dm")
+    assert fwd.n_actuators == {"petals": 12, "fourier_dm": 46}
+    out = fwd(petal_actuations)
+    for c in hcipy_sim._c.correctors:
+        c.set_actuators(petal_actuations[c.name])
+    for name, fp in hcipy_sim.focal_planes.items():
+        assert_image_parity(out[name], fp._propagate_chain(hcipy_sim._c.correctors).intensity)
+    for c in hcipy_sim._c.correctors:
+        c.flatten()
+
+
+def test_petal_piston_only_parity():
+    def mutate(raw):
+        raw["correctors"]["petals"]["piston_only"] = True
+        raw["correctors"]["petals"]["target_strategy"] = "actuators"
+        raw["correctors"]["petals"]["target"] = True
+
+    config = _petal_config(mutate)
+    hcipy_sim, jax_sim = build(config, backend="hcipy"), build(config, backend="jax")
+    assert jax_sim._c.correctors[0].n_actuators == 4
+    pistons = np.random.default_rng(32).normal(size=4)
+    h_out = hcipy_sim.sample({"petals": pistons})
+    d_out = jax_sim.sample({"petals": pistons})
+    assert_image_parity(d_out["images"]["psf"], h_out["images"]["psf"])
+    np.testing.assert_array_equal(d_out["actuations"]["petals"], h_out["actuations"]["petals"])
+    assert d_out["actuations"]["petals"].shape == (4,)
+    fwd = jax_sim.forward_fn()
+    assert fwd.n_actuators["petals"] == 4
+    assert_image_parity(fwd({"petals": pistons})["filter1"], h_out["images"]["psf"][..., 0])

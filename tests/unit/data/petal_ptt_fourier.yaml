@@ -1,0 +1,58 @@
+# Cross-backend parity config: a spider-partitioned monolithic pupil
+# (four cardinal vanes) with per-petal piston/tip/tilt imposed as a
+# disturbance and a Fourier-mode DM reporting the residual-fit echo —
+# the low-wind-effect training composition.
+#
+# The aperture module path is resolved relative to the test file by the
+# parity test (see _petal_config in test_jax_backend_parity.py).
+
+pupil:
+  resolution: 96
+  extent: 1.05
+
+aperture:
+  type: external_pupil
+  module: data/stub_pupil.py
+  function: generate_pupil
+  mode: field
+  kwargs:
+    stub: false
+  area: 0.75
+  segmentation:
+    method: connected_components
+    n_segments: 4
+
+correctors:
+  petals:
+    type: segmented_ptt
+    piston_scale: 1.0e-7
+    tip_tilt_scale: 1.0e-7
+    wavefront_role: impose
+    target_strategy: none
+  fourier_dm:
+    type: fourier
+    n_axis: 6
+    actuate_scale: 1.0e-7
+    wavefront_role: actuate
+    target_strategy: actuators_plus_residual_fit
+    target: true
+
+corrector_chain: [petals, fourier_dm]
+
+focal_planes:
+  filter1:
+    type: angular
+    central_lam: 1.0e-6
+    focal_extent: 2.0
+    focal_res: 64
+    fractional_bandwidth: 0.1
+    num_samples: 3
+
+outputs:
+  psf:
+    tap:
+      type: intensity
+      focal_planes: [filter1]
+    post_processing: []
+
+strehl_core_rad: null

@@ -3,7 +3,16 @@
 Actuator state has shape ``(n_segments, 3)``: piston (meters), tip-slope,
 tilt-slope per segment. Caller-facing values are scaled by ``piston_scale``
 and ``tip_tilt_scale``; internally the corrector multiplies through to get
-the absolute surface deformation HCIPy expects.
+the absolute surface deformation HCIPy expects. With ``piston_only=True``
+the caller-facing state collapses to one piston per segment, shape
+``(n_segments,)``; tip and tilt are held at zero.
+
+The segments come from the aperture build result: either a segmented
+aperture kind (``segmented_circular``) or any aperture with a
+``segmentation:`` block, which partitions a spider-cut monolithic pupil
+into its petals (see :mod:`telescope_sim.apertures.segmentation`). The
+latter is how the low wind effect / island effect is modeled: per-petal
+piston, tip and tilt imposed as a disturbance, or petal pistons alone.
 
 This corrector is the primary "actuate" or "impose" element for the
 canonical-family fixtures (mini-ELF and similar segmented designs). It
@@ -30,6 +39,17 @@ class SegmentedPTTCorrector(Corrector):
 
     Construct from an aperture build result that includes segments
     (``ApertureResult.segments``) and segment coordinates.
+
+    Parameters
+    ----------
+    piston_scale, tip_tilt_scale
+        Multipliers from caller-facing values to the surface piston
+        (meters) and tip/tilt slopes HCIPy applies.
+    piston_only
+        Restrict the caller-facing state to one piston per segment
+        (``n_actuators = n_segments``, ``actuators.shape = (n_segments,)``).
+        The underlying mirror keeps its tip/tilt slots, held at zero;
+        ``fit_surface`` returns the piston column of the full fit.
     """
 
     def __init__(
@@ -40,6 +60,7 @@ class SegmentedPTTCorrector(Corrector):
         name: str = "segments",
         piston_scale: float = 1e-6,
         tip_tilt_scale: float = 1e-6,
+        piston_only: bool = False,
         wavefront_role: WavefrontRole = "actuate",
         target_strategy: TargetStrategy = "none",
         fit_source: str | None = None,
@@ -56,6 +77,7 @@ class SegmentedPTTCorrector(Corrector):
         self._n_segments = self._segment_coords.shape[0]
         self.piston_scale = float(piston_scale)
         self.tip_tilt_scale = float(tip_tilt_scale)
+        self.piston_only = bool(piston_only)
 
         self.wavefront_role = wavefront_role
         self.target_strategy = target_strategy
@@ -74,8 +96,22 @@ class SegmentedPTTCorrector(Corrector):
         Accepts either:
         - ``(n_segments, 3)`` array — caller-facing PTT values, scaled here
         - flat array of length ``3 * n_segments`` — same content, reshaped
+
+        With ``piston_only``: ``(n_segments,)`` or ``(n_segments, 1)``
+        pistons; tip and tilt are written as zero.
         """
         arr = np.asarray(values, dtype=float)
+        n = self._n_segments
+        if self.piston_only:
+            if arr.shape not in {(n,), (n, 1)}:
+                raise ValueError(f"piston_only: expected shape ({n},) or ({n}, 1), got {arr.shape}")
+            self._sm.set_segment_actuators(
+                np.arange(n),
+                arr.reshape(n) * self.piston_scale,
+                np.zeros(n),
+                np.zeros(n),
+            )
+            return
         if arr.shape == (self._n_segments, 3):
             ptt = arr
         elif arr.shape == (3 * self._n_segments,):
@@ -108,7 +144,8 @@ class SegmentedPTTCorrector(Corrector):
         in meters; for each segment, fits ``OPD ≈ p + t_x*x + t_y*y``
         over the segment's pixels. Returns matching caller-facing PTT —
         an ``(n_segments, 3)`` array divided by ``piston_scale`` /
-        ``tip_tilt_scale`` and by 2 (surface→OPD round-trip).
+        ``tip_tilt_scale`` and by 2 (surface→OPD round-trip); with
+        ``piston_only``, the ``(n_segments,)`` piston column of that fit.
 
         The aperture-masked mean of the input is subtracted before the
         per-segment lstsq (idempotent with the post-fit per-segment
@@ -147,11 +184,16 @@ class SegmentedPTTCorrector(Corrector):
         # is applied here.
         fits[:, 0] /= self.piston_scale
         fits[:, 1:] /= self.tip_tilt_scale
-        return fits / 2.0
+        fits = fits / 2.0
+        return fits[:, 0] if self.piston_only else fits
+
+    @property
+    def n_segments(self) -> int:
+        return self._n_segments
 
     @property
     def n_actuators(self) -> int:
-        return 3 * self._n_segments
+        return self._n_segments if self.piston_only else 3 * self._n_segments
 
     @property
     def actuators(self) -> NDArray:
@@ -160,10 +202,13 @@ class SegmentedPTTCorrector(Corrector):
         HCIPy stores actuators in block layout
         ``[p_0..p_{n-1}, t_0..t_{n-1}, T_0..T_{n-1}]`` (not row-major);
         de-interleave back to the per-segment ``(p, t, T)`` rows
-        callers expect.
+        callers expect. With ``piston_only``, the ``(n_segments,)``
+        piston column.
         """
         raw = np.asarray(self._sm.actuators)
         n = self._n_segments
+        if self.piston_only:
+            return raw[0:n] / self.piston_scale
         out = np.empty((n, 3), dtype=float)
         out[:, 0] = raw[0:n] / self.piston_scale
         out[:, 1] = raw[n : 2 * n] / self.tip_tilt_scale

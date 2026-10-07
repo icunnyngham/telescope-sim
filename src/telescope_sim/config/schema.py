@@ -25,6 +25,30 @@ class StageConfig(BaseModel):
     type: str
 
 
+class SegmentationConfig(BaseModel):
+    """Optional partition of a built aperture into segments.
+
+    Attached to any aperture kind as ``aperture.segmentation``; the
+    loader applies it after the aperture build and fills in
+    ``ApertureResult.segments`` / ``segment_coords`` so segment-wise
+    correctors (``segmented_ptt``) can run on a spider-partitioned
+    monolithic pupil. See :mod:`telescope_sim.apertures.segmentation`.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["connected_components"] = "connected_components"
+    n_segments: int = Field(ge=1)
+    merge_fragments: bool = True
+    threshold: float = 0.0
+
+
+class ApertureConfig(StageConfig):
+    """An aperture stage plus its optional post-build segmentation."""
+
+    segmentation: SegmentationConfig | None = None
+
+
 class CorrectorConfig(StageConfig):
     """A corrector + its role/target-strategy settings."""
 
@@ -70,7 +94,7 @@ class SimConfig(BaseModel):
     # hcipy backend is float64-only, so "float32" requires backend=jax.
     precision: Literal["float64", "float32"] = "float64"
     pupil: PupilConfig
-    aperture: StageConfig
+    aperture: ApertureConfig
     correctors: dict[str, CorrectorConfig] = Field(default_factory=dict)
     corrector_chain: list[str] = Field(default_factory=list)
     coronagraph: StageConfig | None = None
@@ -96,6 +120,8 @@ class SimConfig(BaseModel):
 __all__ = [
     "SimConfig",
     "StageConfig",
+    "ApertureConfig",
+    "SegmentationConfig",
     "CorrectorConfig",
     "PostProcessorConfig",
     "OutputConfig",

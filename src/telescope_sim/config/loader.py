@@ -36,6 +36,7 @@ from telescope_sim.abc import (
     OutputTap,
     PostProcessor,
 )
+from telescope_sim.apertures.segmentation import partition_connected_components
 from telescope_sim.config.schema import SimConfig, StageConfig
 from telescope_sim.pipeline import (
     TelescopeSim,
@@ -109,9 +110,35 @@ def build(config: SimConfig, *, backend: str | None = None) -> TelescopeSim:  # 
     # 1) Pupil grid
     pupil_grid = hcipy.make_pupil_grid(config.pupil.resolution, config.pupil.extent)
 
-    # 2) Aperture
-    aperture_impl: Aperture = _instantiate("aperture", config.aperture, backend=backend)
+    # 2) Aperture. The optional ``segmentation`` block is not a constructor
+    #    kwarg: it is applied to the built transmission map afterwards and
+    #    fills in the segments a segmented aperture kind would have
+    #    produced, so segment-wise correctors can run on any pupil.
+    aperture_payload = config.aperture.model_dump()
+    segmentation = aperture_payload.pop("segmentation", None)
+    aperture_impl: Aperture = _instantiate("aperture", aperture_payload, backend=backend)
     aperture_result = aperture_impl.build(pupil_grid)
+    if segmentation is not None:
+        if aperture_result.segments is not None:
+            raise ValueError(
+                f"aperture/{config.aperture.type} already defines segments; "
+                "the segmentation block only applies to unsegmented apertures."
+            )
+        partition = partition_connected_components(
+            pupil_grid,
+            aperture_result.field,
+            n_segments=segmentation["n_segments"],
+            merge_fragments=segmentation["merge_fragments"],
+            threshold=segmentation["threshold"],
+        )
+        aperture_result.segments = partition.segments
+        aperture_result.segment_coords = partition.segment_coords
+        aperture_result.metadata["segmentation"] = {
+            "method": segmentation["method"],
+            "n_segments": int(segmentation["n_segments"]),
+            "n_raw_regions": partition.n_raw_regions,
+            "merge_info": partition.merge_info,
+        }
 
     # 3) Correctors
     correctors_by_name: dict[str, Corrector] = {}
